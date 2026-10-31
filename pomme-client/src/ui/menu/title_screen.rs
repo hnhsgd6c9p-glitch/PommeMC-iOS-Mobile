@@ -9,8 +9,8 @@
 //!   theme wipe already covers the switch; this would only show on first entry.
 //! - TODO: the copyright line is clickable but not in the Tab ring, unlike
 //!   vanilla's `PlainTextButton`.
-//! - Realms notification icons, demo mode, the 1-in-10000 `minceraft.png`
-//!   easter-egg logo and the IDE-only test-world button are all omitted.
+//! - Realms notification icons, the 1-in-10000 `minceraft.png` easter-egg
+//!   logo and the IDE-only test-world button are omitted.
 
 use std::f32::consts::TAU;
 
@@ -89,6 +89,18 @@ impl MainMenu {
             sprite: SpriteId::MinecraftEdition,
             tint: WHITE,
         });
+        // Keep the account type visible on the title screen, using the same
+        // Minecraft font path as the other menu labels.
+        if self.demo_account {
+            elements.push(MenuElement::Text {
+                x: cx,
+                y: (LOGO_HEIGHT_OFFSET + LOGO_H + EDITION_H + 5.0) * gs,
+                text: "DEMO MODE".into(),
+                scale: fs,
+                color: [1.0, 0.85, 0.25, 1.0],
+                centered: true,
+            });
+        }
 
         self.push_splash(
             &mut elements,

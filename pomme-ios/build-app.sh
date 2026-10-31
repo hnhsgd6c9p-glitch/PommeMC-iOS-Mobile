@@ -19,9 +19,11 @@ fi
 app="$TARGET_BUILD_DIR/$WRAPPER_NAME"
 frameworks="$TARGET_BUILD_DIR/$FRAMEWORKS_FOLDER_PATH"
 export PATH="$HOME/.cargo/bin:$PATH"
-# Xcode points these at the iOS SDK, which would break the host-built build
-# scripts (shaderc); cc picks each target's SDK itself.
-unset SDKROOT LIBRARY_PATH
+# Build scripts and native helper crates also compile host tools (including
+# aws-lc-sys). Give those host compilations the macOS SDK explicitly; Xcode's
+# inherited SDKROOT points at the iOS SDK and is not suitable for host C code.
+export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
+unset LIBRARY_PATH
 
 cd "$PROJECT_DIR/.."
 # shaderc, built for the Mac, keeps using a real Vulkan SDK's copy when there
