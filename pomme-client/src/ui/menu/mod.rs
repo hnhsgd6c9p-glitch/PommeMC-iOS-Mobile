@@ -369,6 +369,8 @@ pub enum MenuAction {
     ChangeTheme(PanoramaTheme),
     /// Signed in (`Some`) or out (`None`) from the account screen.
     Account(Option<pomme_auth::AuthAccount>),
+    /// Continue without a Microsoft account using an offline demo identity.
+    DemoMode,
     /// Open the singleplayer world in this save folder.
     PlayWorld {
         folder: String,
@@ -1050,6 +1052,14 @@ impl MainMenu {
         if self.account_gated() {
             self.set_screen(Screen::Account, key_bindings);
         }
+    }
+
+    /// Leaves the release account gate for the explicitly limited offline demo.
+    pub(crate) fn enter_demo_mode(&mut self, key_bindings: &KeyBindings) {
+        self.account_required = false;
+        self.access_token = None;
+        self.username = "Demo".into();
+        self.set_screen(Screen::Main, key_bindings);
     }
 
     /// A form's text field has keyboard focus.

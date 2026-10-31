@@ -114,11 +114,12 @@ impl MainMenu {
                 ),
                 (None, SignIn::Idle) if gated => (
                     vec![
-                        "Pomme needs a Minecraft account.".into(),
+                        "Pomme needs a Minecraft account for online play.".into(),
                         "Sign in with the Microsoft account that owns Minecraft.".into(),
+                        "Or try the offline demo without an account.".into(),
                     ],
                     None,
-                    vec!["Sign In", leave],
+                    vec!["Sign In", "Play Demo", leave],
                 ),
                 (None, SignIn::Idle) => (
                     vec!["Sign in with a Microsoft account to join online servers.".into()],
@@ -145,7 +146,7 @@ impl MainMenu {
                 (None, SignIn::Failed(reason)) => (
                     vec!["Sign-in failed:".into(), reason.clone()],
                     None,
-                    vec!["Try Again", leave],
+                    vec!["Try Again", "Play Demo", leave],
                 ),
                 (None, SignIn::Done(_)) => unreachable!("handled above"),
             };
@@ -218,6 +219,7 @@ impl MainMenu {
         let mut action = MenuAction::None;
         match pressed {
             Some("Sign In" | "Try Again") => self.start_sign_in(),
+            Some("Play Demo") => action = MenuAction::DemoMode,
             Some("Copy Code") => {
                 if let SignIn::Code(code) = &*self.sign_in.read() {
                     common::set_clipboard(&code.user_code);

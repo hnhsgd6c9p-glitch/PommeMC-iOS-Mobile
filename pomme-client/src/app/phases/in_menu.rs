@@ -201,6 +201,16 @@ pub fn update_menu(
             }
             core.menu.start_transition_open();
         }
+        MenuAction::DemoMode => {
+            core.user = crate::user::UserData::from_args(Some("Demo".into()), None, None);
+            core.menu.enter_demo_mode(&core.input.key_bindings);
+            core.menu.set_account(
+                core.user.username.clone(),
+                None,
+                &core.input.key_bindings,
+            );
+            core.menu.set_player_face(None);
+        }
         MenuAction::Account(account) => {
             if account.is_none() {
                 core.menu.forget_account(&core.user.uuid);
