@@ -20,13 +20,52 @@ Pomme contains no Mojang code, and joins vanilla servers from 1.20 through 26.3.
   <img width="100%" alt="Pomme flying over a jungle" src="https://github.com/user-attachments/assets/c35e717e-3535-4f4f-9539-9e62dd482e04" />
 </p>
 
-## iPhone / iOS Alpha Port
+## iPhone / iOS IPA — VERY EARLY ALPHA
 
-An experimental iPhone port of PommeMC is available as an unsigned IPA for alpha testing. It includes an **offline Demo Mode**, so you can try local singleplayer without owning Minecraft: Java Edition or signing in. Online-mode multiplayer still requires a legitimate Minecraft account. This is an unofficial community build from this fork, not an official release supported by the upstream PommeMC maintainers. Expect bugs and incomplete features.
+> [!CAUTION]
+> **This is a very, very early experimental alpha.** It is a community iOS port of PommeMC, not a stable release and not an official build supported by the upstream maintainers. Expect crashes, missing features, rendering problems, broken controls, and devices or iOS versions that may not work. Back up important data and do not rely on this build.
 
-**[Download the PommeMC iPhone Alpha IPA](https://github.com/hnhsgd6c9p-glitch/PommeMC-Client/releases/download/ios-test-2026-10-31/Pomme-unsigned.ipa)** · [Release notes and details](https://github.com/hnhsgd6c9p-glitch/PommeMC-Client/releases/tag/ios-test-2026-10-31)
+The project is a Rust-based Minecraft: Java Edition client being adapted for iPhone/iOS. The IPA is distributed unsigned and must be signed with your own Apple ID/developer certificate before iOS will install it. Download the newest available build from the [Releases page](https://github.com/hnhsgd6c9p-glitch/PommeMC-iOS-IPA/releases). Only use an IPA attached to a release that is marked as a successful build; GitHub Actions artifacts may be temporary.
 
-> **Note:** The IPA is unsigned and requires a compatible sideloading/signing setup. It was prepared for testing with LiveContainer. Demo Mode uses an offline identity and is intended for local singleplayer; it does not grant access to authenticated online servers. Use at your own risk; it is an experimental alpha, not a stable build.
+### Install with AltStore Classic (recommended)
+
+1. On your Mac or Windows PC, install [AltServer](https://altstore.io/) and follow the [official AltStore installation guide](https://faq.altstore.io/altstore-classic/how-to-install-altstore).
+2. Connect your iPhone by USB, trust the computer, and use AltServer's menu to install AltStore on the phone. The first setup requires your Apple ID.
+3. Download the Pomme unsigned `.ipa` from this repository's [Releases](https://github.com/hnhsgd6c9p-glitch/PommeMC-iOS-IPA/releases) page.
+4. Open AltStore on your iPhone, go to **My Apps**, tap **+**, select the downloaded IPA in Files, and let AltStore sign and install it.
+5. With a free Apple ID, sideloaded apps normally need refreshing every 7 days. Keep AltServer/AltStore configured and refresh before expiry.
+
+Official links: [AltStore](https://altstore.io/) · [AltStore install guide](https://faq.altstore.io/altstore-classic/how-to-install-altstore).
+
+### Install with Sideloadly
+
+1. Download [Sideloadly](https://sideloadly.io/) for macOS or Windows.
+2. Connect and trust your iPhone, then open Sideloadly.
+3. Drag the Pomme `.ipa` into the IPA field.
+4. Enter your Apple ID in Sideloadly, select the connected device, and start sideloading.
+5. If iOS asks, trust the developer profile under **Settings → General → VPN & Device Management**.
+
+A free Apple ID generally gives a 7-day signing period; a paid Apple Developer account can provide a longer period. Sideloadly advertises automatic re-signing, but the computer/refresh service must be available and configured. [Sideloadly download and instructions](https://sideloadly.io/).
+
+### Run it inside LiveContainer
+
+LiveContainer is an app launcher/container, not an emulator. It can run compatible iOS apps inside its own app environment. Pomme's Vulkan/graphics, memory, input, and platform requirements may not all work inside LiveContainer; compatibility is **not guaranteed**.
+
+1. First install the official [LiveContainer](https://github.com/LiveContainer/LiveContainer) using its [official installation guide](https://livecontainer.github.io/docs/installation). For standalone LiveContainer, use a supported AltStore/SideStore version.
+2. **Do not install LiveContainer itself with Sideloadly.** The LiveContainer maintainers explicitly say Sideloadly is unsupported for installing LiveContainer because required signing/entitlement setup may be wrong.
+3. Open LiveContainer → **Settings** → **Import Certificate from AltStore/SideStore** and complete the certificate export/import prompt.
+4. Run **JIT-Less Mode Diagnose** and confirm the test passes.
+5. In LiveContainer, tap **+**, choose the Pomme IPA from Files, install it, then select Pomme in LiveContainer to launch it.
+
+Official links: [LiveContainer GitHub](https://github.com/LiveContainer/LiveContainer) · [Installation guide](https://livecontainer.github.io/docs/installation) · [Standalone setup](https://livecontainer.github.io/docs/installation/standalone).
+
+### Important limitations
+
+- An unsigned IPA is not directly installable by iOS; a sideloading tool must sign it first.
+- A successful install does not mean the app will launch or run correctly. This is an experimental port.
+- LiveContainer is optional. Try a direct AltStore/Sideloadly install first if you only want to test the app itself.
+- Do not enter important account credentials into unofficial repackaged builds. Download this project's IPA only from this repository's release page.
+- Report reproducible bugs with your iPhone model, iOS version, install method, and crash/log details.
 
 ## Download
 
