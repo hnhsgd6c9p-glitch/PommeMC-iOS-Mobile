@@ -22,11 +22,11 @@ Pomme contains no Mojang code, and joins vanilla servers from 1.20 through 26.3.
 
 ## iPhone / iOS Alpha Port
 
-An experimental iPhone port of PommeMC is available as an unsigned IPA for alpha testing. This is an unofficial community build from this fork, not an official release supported by the upstream PommeMC maintainers. Expect bugs and incomplete features.
+An experimental iPhone port of PommeMC is available as an unsigned IPA for alpha testing. It includes an **offline Demo Mode**, so you can try local singleplayer without owning Minecraft: Java Edition or signing in. Online-mode multiplayer still requires a legitimate Minecraft account. This is an unofficial community build from this fork, not an official release supported by the upstream PommeMC maintainers. Expect bugs and incomplete features.
 
 **[Download the PommeMC iPhone Alpha IPA](https://github.com/hnhsgd6c9p-glitch/PommeMC-Client/releases/download/ios-test-2026-10-31/Pomme-unsigned.ipa)** · [Release notes and details](https://github.com/hnhsgd6c9p-glitch/PommeMC-Client/releases/tag/ios-test-2026-10-31)
 
-> **Note:** The IPA is unsigned and requires a compatible sideloading/signing setup. It was prepared for testing with LiveContainer. Use at your own risk; it is an experimental alpha, not a stable build.
+> **Note:** The IPA is unsigned and requires a compatible sideloading/signing setup. It was prepared for testing with LiveContainer. Demo Mode uses an offline identity and is intended for local singleplayer; it does not grant access to authenticated online servers. Use at your own risk; it is an experimental alpha, not a stable build.
 
 ## Download
 
