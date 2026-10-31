@@ -29,7 +29,7 @@ cd "$PROJECT_DIR/.."
 if [ -n "${VULKAN_SDK:-}" ]; then
     export SHADERC_LIB_DIR="$VULKAN_SDK/lib"
 fi
-VULKAN_SDK="$(python3 tools/fetch_moltenvk.py "$platform")"
+VULKAN_SDK="$(python3 tools/fetch_moltenvk.py "$platform" | tail -n 1)"
 export VULKAN_SDK
 cargo build -p pomme-ios --target "$triple" ${release:+"$release"}
 mkdir -p "$app" "$frameworks"
