@@ -20,6 +20,14 @@ Pomme contains no Mojang code, and joins vanilla servers from 1.20 through 26.3.
   <img width="100%" alt="Pomme flying over a jungle" src="https://github.com/user-attachments/assets/c35e717e-3535-4f4f-9539-9e62dd482e04" />
 </p>
 
+## iPhone / iOS Alpha Port
+
+An experimental iPhone port of PommeMC is available as an unsigned IPA for alpha testing. This is an unofficial community build from this fork, not an official release supported by the upstream PommeMC maintainers. Expect bugs and incomplete features.
+
+**[Download the PommeMC iPhone Alpha IPA](https://github.com/hnhsgd6c9p-glitch/PommeMC-Client/releases/download/ios-test-2026-10-31/Pomme-unsigned.ipa)** · [Release notes and details](https://github.com/hnhsgd6c9p-glitch/PommeMC-Client/releases/tag/ios-test-2026-10-31)
+
+> **Note:** The IPA is unsigned and requires a compatible sideloading/signing setup. It was prepared for testing with LiveContainer. Use at your own risk; it is an experimental alpha, not a stable build.
+
 ## Download
 
 Get Pomme from the [latest release](https://github.com/PommeMC/Client/releases/latest):
