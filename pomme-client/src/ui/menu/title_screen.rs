@@ -101,7 +101,7 @@ impl MainMenu {
         // Realms is never enabled.
         let rows: [(&str, bool); 3] = [
             ("Singleplayer", true),
-            ("Multiplayer", true),
+            ("Multiplayer", !self.demo_account),
             ("Minecraft Realms", false),
         ];
         for (i, (label, enabled)) in rows.iter().enumerate() {

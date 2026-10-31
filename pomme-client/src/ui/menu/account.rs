@@ -106,7 +106,9 @@ impl MainMenu {
         }
 
         let (lines, code, buttons): (Vec<String>, Option<String>, Vec<&str>) =
-            match (&self.access_token, &*self.sign_in.read()) {
+            if self.demo_account {
+                (vec![format!("Xbox demo account: {}", self.username), "Single-player only — multiplayer, servers and Realms are unavailable.".into()], None, vec!["Sign Out", "Back"])
+            } else { match (&self.access_token, &*self.sign_in.read()) {
                 (Some(_), _) => (
                     vec![format!("Signed in as {}", self.username)],
                     None,
@@ -115,11 +117,10 @@ impl MainMenu {
                 (None, SignIn::Idle) if gated => (
                     vec![
                         "Pomme needs a Minecraft account for online play.".into(),
-                        "Sign in with the Microsoft account that owns Minecraft.".into(),
-                        "Or try the offline demo without an account.".into(),
+                        "Sign in with Microsoft to use your Java profile or Xbox demo identity.".into(),
                     ],
                     None,
-                    vec!["Sign In", "Play Demo", leave],
+                    vec!["Sign In", leave],
                 ),
                 (None, SignIn::Idle) => (
                     vec!["Sign in with a Microsoft account to join online servers.".into()],
@@ -146,10 +147,10 @@ impl MainMenu {
                 (None, SignIn::Failed(reason)) => (
                     vec!["Sign-in failed:".into(), reason.clone()],
                     None,
-                    vec!["Try Again", "Play Demo", leave],
+                    vec!["Try Again", leave],
                 ),
                 (None, SignIn::Done(_)) => unreachable!("handled above"),
-            };
+            }};
 
         let gs = self.gui_scale(screen_w, screen_h);
         let fs = common::FONT_SIZE * gs;
@@ -219,7 +220,6 @@ impl MainMenu {
         let mut action = MenuAction::None;
         match pressed {
             Some("Sign In" | "Try Again") => self.start_sign_in(),
-            Some("Play Demo") => action = MenuAction::DemoMode,
             Some("Copy Code") => {
                 if let SignIn::Code(code) = &*self.sign_in.read() {
                     common::set_clipboard(&code.user_code);
@@ -309,9 +309,9 @@ mod tests {
         assert!(texts(&gate).contains(&"Quit"));
         assert!(!texts(&gate).contains(&"Back"));
 
-        menu.set_account("Tester".into(), Some("token".into()), &key_bindings);
+        menu.set_account("Tester".into(), Some("token".into()), false, &key_bindings);
         menu.set_screen(Screen::Main, &key_bindings);
-        menu.set_account("Tester".into(), None, &key_bindings);
+        menu.set_account("Tester".into(), None, false, &key_bindings);
         assert!(matches!(menu.screen, Screen::Account));
     }
 }

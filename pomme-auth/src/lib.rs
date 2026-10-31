@@ -25,11 +25,26 @@ const ACCOUNTS_KEY: &str = "minecraft-accounts";
 const REFRESH_KEY: &str = "minecraft-refresh-tokens";
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct AuthAccount {
     pub username: String,
+    #[serde(rename = "profileId", alias = "uuid")]
     pub uuid: String,
+    #[serde(alias = "access_token")]
     pub access_token: String,
+    #[serde(alias = "expires_at")]
     pub expires_at: u64,
+    #[serde(default, alias = "is_demo")]
+    pub is_demo: bool,
+    #[serde(default)]
+    #[serde(alias = "xbox_gamertag")]
+    pub xbox_gamertag: String,
+    #[serde(default, alias = "account_id")]
+    pub account_id: String,
+    #[serde(default)]
+    pub xuid: String,
+    #[serde(default, rename = "profilePicURL", alias = "profile_pic_url")]
+    pub profile_pic_url: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -54,6 +69,10 @@ struct XblDisplayClaims {
 #[derive(Deserialize)]
 struct XblXui {
     uhs: String,
+    #[serde(default)]
+    gt: Option<String>,
+    #[serde(default)]
+    id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -111,10 +130,14 @@ fn refresh_tokens(store: &dyn SecretStore) -> HashMap<String, String> {
 }
 
 /// The stored account, while its access token is still valid.
-pub fn try_restore(store: &dyn SecretStore, uuid: &str) -> Option<AuthAccount> {
+fn account_key(account: &AuthAccount) -> &str {
+    if account.account_id.is_empty() { &account.uuid } else { &account.account_id }
+}
+
+pub fn try_restore(store: &dyn SecretStore, key: &str) -> Option<AuthAccount> {
     get_all_accounts(store)
         .into_iter()
-        .find(|a| a.uuid == uuid && a.expires_at > unix_now())
+        .find(|a| (a.uuid == key || account_key(&a) == key) && a.expires_at > unix_now())
 }
 
 pub async fn try_refresh(
@@ -139,21 +162,25 @@ pub async fn try_restore_or_refresh(
 
 pub fn remove_account(store: &dyn SecretStore, uuid: &str) {
     let mut accounts = get_all_accounts(store);
-    accounts.retain(|a| a.uuid != uuid);
+    let removed_key = accounts.iter().find(|a| a.uuid == uuid || account_key(a) == uuid)
+        .map(|a| account_key(a).to_owned());
+    accounts.retain(|a| a.uuid != uuid && account_key(a) != uuid);
     write_json(store, ACCOUNTS_KEY, &accounts);
     let mut tokens = refresh_tokens(store);
     tokens.remove(uuid);
+    if let Some(key) = removed_key { tokens.remove(&key); }
     write_json(store, REFRESH_KEY, &tokens);
 }
 
 fn save_account(store: &dyn SecretStore, account: &AuthAccount, refresh_token: Option<&str>) {
     let mut accounts = get_all_accounts(store);
-    accounts.retain(|a| a.uuid != account.uuid);
+    let key = account_key(account).to_owned();
+    accounts.retain(|a| account_key(a) != key);
     accounts.push(account.clone());
     write_json(store, ACCOUNTS_KEY, &accounts);
     if let Some(token) = refresh_token {
         let mut tokens = refresh_tokens(store);
-        tokens.insert(account.uuid.clone(), token.to_owned());
+        tokens.insert(key, token.to_owned());
         write_json(store, REFRESH_KEY, &tokens);
     }
 }
@@ -213,12 +240,31 @@ async fn exchange_msa_to_minecraft(
         .await
         .map_err(|e| format!("Xbox Live parse failed: {}", crate::error_chain(e)))?;
 
-    let user_hash = xbl
-        .display_claims
-        .xui
-        .first()
-        .map(|x| x.uhs.clone())
-        .ok_or("No user hash in XBL response")?;
+    let xui = xbl.display_claims.xui.first().ok_or("No user hash in XBL response")?;
+    let user_hash = xui.uhs.clone();
+
+    // Amethyst obtains the gamerpic and canonical gamertag from the Xbox
+    // profile API using an XSTS token scoped to xboxlive.com.
+    let xbox_xsts = http
+        .post("https://xsts.auth.xboxlive.com/xsts/authorize")
+        .json(&serde_json::json!({"Properties":{"SandboxId":"RETAIL","UserTokens":[&xbl.token]},"RelyingParty":"http://xboxlive.com","TokenType":"JWT"}))
+        .send().await.map_err(|e| format!("Xbox profile XSTS failed: {}", crate::error_chain(e)))?;
+    let xbox_xsts: XblResponse = xbox_xsts.error_for_status()
+        .map_err(|e| format!("Xbox profile XSTS refused: {}", crate::error_chain(e)))?
+        .json().await.map_err(|e| format!("Xbox profile XSTS parse failed: {}", crate::error_chain(e)))?;
+    #[derive(Deserialize)] struct XboxProfileResponse { #[serde(rename="profileUsers")] profile_users: Vec<XboxProfileUser> }
+    #[derive(Deserialize)] struct XboxProfileUser { settings: Vec<XboxProfileSetting> }
+    #[derive(Deserialize)] struct XboxProfileSetting { value: String }
+    let xuid = xbox_xsts.display_claims.xui.first().and_then(|claim| claim.id.clone()).ok_or("Xbox XSTS response had no XUID")?;
+    let xbox_profile: XboxProfileResponse = http.get("https://profile.xboxlive.com/users/me/profile/settings?settings=PublicGamerpic,Gamertag")
+        .header("x-xbl-contract-version", "2")
+        .header("Authorization", format!("XBL3.0 x={};{}", user_hash, xbox_xsts.token))
+        .send().await.map_err(|e| format!("Xbox profile fetch failed: {}", crate::error_chain(e)))?
+        .error_for_status().map_err(|e| format!("Xbox profile refused: {}", crate::error_chain(e)))?
+        .json().await.map_err(|e| format!("Xbox profile parse failed: {}", crate::error_chain(e)))?;
+    let settings = &xbox_profile.profile_users.first().ok_or("Xbox profile response had no user")?.settings;
+    let gamerpic = settings.first().map(|s| format!("{}&h=120&w=120", s.value));
+    let gamertag = settings.get(1).map(|s| s.value.clone()).ok_or("Xbox profile response had no gamertag")?;
 
     let xsts = http
         .post("https://xsts.auth.xboxlive.com/xsts/authorize")
@@ -262,8 +308,25 @@ async fn exchange_msa_to_minecraft(
         .send()
         .await
         .map_err(|e| format!("Profile fetch failed: {}", crate::error_chain(e)))?;
+
     if profile.status() == reqwest::StatusCode::NOT_FOUND {
-        return Err("This Microsoft account doesn't own Minecraft".into());
+        // Match Amethyst: Xbox-authenticated accounts without a Java profile
+        // receive a demo identity based on their Xbox gamertag.
+        let username = format!("Demo.{gamertag}");
+        return Ok(AuthAccount {
+            uuid: "00000000-0000-0000-0000-000000000000".into(),
+            username,
+            access_token: String::new(),
+            expires_at: unix_now() + 86400,
+            is_demo: true,
+            xbox_gamertag: gamertag,
+            account_id: xuid.clone(),
+            xuid,
+            profile_pic_url: gamerpic,
+        });
+    }
+    if !profile.status().is_success() {
+        return Err(format!("Minecraft profile lookup failed: HTTP {}", profile.status()));
     }
     let profile: McProfileResponse = profile
         .json()
@@ -274,8 +337,12 @@ async fn exchange_msa_to_minecraft(
         username: profile.name,
         uuid: profile.id,
         access_token: mc.access_token,
-        // Minecraft tokens last a day.
         expires_at: unix_now() + 86400,
+        is_demo: false,
+        xbox_gamertag: gamertag,
+        account_id: xuid.clone(),
+        xuid,
+        profile_pic_url: None,
     })
 }
 
@@ -320,6 +387,11 @@ mod tests {
             uuid: "abc".into(),
             access_token: token.into(),
             expires_at: 0,
+            is_demo: false,
+            xbox_gamertag: String::new(),
+            account_id: String::new(),
+            xuid: String::new(),
+            profile_pic_url: None,
         };
         save_account(&store, &account("one"), Some("refresh"));
         save_account(&store, &account("two"), None);

@@ -50,6 +50,10 @@ pub fn open_world(core: &mut AppCore, folder: &str) -> MenuUpdateResult {
 /// Starts `--quick-access-multiplayer` or `--quick-access-singleplayer`.
 pub fn quick_play(core: &mut AppCore, play: QuickPlay) -> MenuUpdateResult {
     match play {
+        QuickPlay::Multiplayer(_server) if core.menu.is_demo_account() => {
+            core.menu.show_disconnect("Demo accounts cannot join multiplayer servers".into(), &core.input.key_bindings);
+            MenuUpdateResult::None
+        }
         QuickPlay::Multiplayer(server) => MenuUpdateResult::Connect {
             // TODO: read the saved server list's protocol for this address to
             // skip the join-time probe.
@@ -180,6 +184,10 @@ pub fn update_menu(
             username,
             protocol,
         } => {
+            if core.menu.is_demo_account() {
+                core.menu.show_disconnect("Demo accounts cannot join multiplayer servers".into(), &core.input.key_bindings);
+                return MenuUpdateResult::None;
+            }
             core.audio.stop_menu_music();
 
             return MenuUpdateResult::Connect {
@@ -201,16 +209,6 @@ pub fn update_menu(
             }
             core.menu.start_transition_open();
         }
-        MenuAction::DemoMode => {
-            core.user = crate::user::UserData::from_args(Some("Demo".into()), None, None);
-            core.menu.enter_demo_mode(&core.input.key_bindings);
-            core.menu.set_account(
-                core.user.username.clone(),
-                None,
-                &core.input.key_bindings,
-            );
-            core.menu.set_player_face(None);
-        }
         MenuAction::Account(account) => {
             if account.is_none() {
                 core.menu.forget_account(&core.user.uuid);
@@ -224,6 +222,7 @@ pub fn update_menu(
             core.menu.set_account(
                 core.user.username.clone(),
                 core.user.access_token.clone(),
+                account.as_ref().is_some_and(|a| a.is_demo),
                 &core.input.key_bindings,
             );
             if core.user.has_profile {

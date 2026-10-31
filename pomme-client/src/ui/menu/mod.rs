@@ -369,8 +369,6 @@ pub enum MenuAction {
     ChangeTheme(PanoramaTheme),
     /// Signed in (`Some`) or out (`None`) from the account screen.
     Account(Option<pomme_auth::AuthAccount>),
-    /// Continue without a Microsoft account using an offline demo identity.
-    DemoMode,
     /// Open the singleplayer world in this save folder.
     PlayWorld {
         folder: String,
@@ -659,6 +657,7 @@ pub struct MainMenu {
     ping_results: PingResults,
     ping_generation: PingGeneration,
     access_token: Option<String>,
+    demo_account: bool,
     friends_data: FriendsData,
     face_cache: FaceCache,
     last_face_count: usize,
@@ -844,6 +843,7 @@ impl MainMenu {
             ping_results,
             ping_generation: Default::default(),
             access_token,
+            demo_account: false,
             friends_data: Default::default(),
             face_cache: Default::default(),
             last_face_count: 0,
@@ -1031,18 +1031,24 @@ impl MainMenu {
         &mut self,
         username: String,
         access_token: Option<String>,
+        is_demo: bool,
         key_bindings: &KeyBindings,
     ) {
         self.username = username;
         self.access_token = access_token;
+        self.demo_account = is_demo;
         if self.account_gated() {
             self.set_screen(Screen::Account, key_bindings);
         }
     }
 
+    pub(crate) fn is_demo_account(&self) -> bool {
+        self.demo_account
+    }
+
     /// Sign-in is required and nobody is signed in yet.
     pub(crate) fn account_gated(&self) -> bool {
-        self.account_required && self.access_token.is_none()
+        self.account_required && self.access_token.is_none() && !self.demo_account
     }
 
     /// Puts the menu behind sign-in: with no account, it opens on the
@@ -1052,14 +1058,6 @@ impl MainMenu {
         if self.account_gated() {
             self.set_screen(Screen::Account, key_bindings);
         }
-    }
-
-    /// Leaves the release account gate for the explicitly limited offline demo.
-    pub(crate) fn enter_demo_mode(&mut self, key_bindings: &KeyBindings) {
-        self.account_required = false;
-        self.access_token = None;
-        self.username = "Demo".into();
-        self.set_screen(Screen::Main, key_bindings);
     }
 
     /// A form's text field has keyboard focus.
