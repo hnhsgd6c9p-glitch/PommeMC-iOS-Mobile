@@ -71,8 +71,8 @@ struct XblXui {
     uhs: String,
     #[serde(default)]
     gt: Option<String>,
-    #[serde(default)]
-    id: Option<String>,
+    #[serde(default, rename = "xid", alias = "id")]
+    xid: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -255,7 +255,7 @@ async fn exchange_msa_to_minecraft(
     #[derive(Deserialize)] struct XboxProfileResponse { #[serde(rename="profileUsers")] profile_users: Vec<XboxProfileUser> }
     #[derive(Deserialize)] struct XboxProfileUser { settings: Vec<XboxProfileSetting> }
     #[derive(Deserialize)] struct XboxProfileSetting { value: String }
-    let xuid = xbox_xsts.display_claims.xui.first().and_then(|claim| claim.id.clone()).ok_or("Xbox XSTS response had no XUID")?;
+    let xuid = xbox_xsts.display_claims.xui.first().and_then(|claim| claim.xid.clone()).ok_or("Xbox XSTS response had no XUID")?;
     let xbox_profile: XboxProfileResponse = http.get("https://profile.xboxlive.com/users/me/profile/settings?settings=PublicGamerpic,Gamertag")
         .header("x-xbl-contract-version", "2")
         .header("Authorization", format!("XBL3.0 x={};{}", user_hash, xbox_xsts.token))
