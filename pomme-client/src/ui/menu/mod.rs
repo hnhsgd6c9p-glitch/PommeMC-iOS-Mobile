@@ -979,6 +979,15 @@ impl MainMenu {
     }
 
     fn set_screen(&mut self, screen: Screen, key_bindings: &KeyBindings) {
+        // An Amethyst-style Xbox demo identity is strictly single-player.
+        // Keep every multiplayer surface unreachable even if another menu
+        // action attempts to navigate there.
+        if self.demo_account && matches!(screen,
+            Screen::ServerList | Screen::DirectConnect | Screen::AddServer |
+            Screen::EditServer(_) | Screen::Friends
+        ) {
+            return;
+        }
         // Vanilla's options screens save as they're removed.
         if self.is_options_screen() {
             self.save_options(key_bindings);
