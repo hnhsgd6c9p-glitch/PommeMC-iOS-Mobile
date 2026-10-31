@@ -47,6 +47,17 @@ Official links: [AltStore](https://altstore.io/) · [AltStore install guide](htt
 
 A free Apple ID generally gives a 7-day signing period; a paid Apple Developer account can provide a longer period. Sideloadly advertises automatic re-signing, but the computer/refresh service must be available and configured. [Sideloadly download and instructions](https://sideloadly.io/).
 
+### Install with SideStore
+
+1. Follow the [official SideStore prerequisites](https://docs.sidestore.io/docs/installation/prerequisites): install LocalDevVPN, then install **iloader** on your Mac or PC.
+2. Connect your iPhone by USB, open iloader, sign in with your Apple Account, select your device, and choose **Install SideStore (Stable)**. Complete the trust prompts on your iPhone.
+3. Open LocalDevVPN and connect. Open SideStore, sign in with the same Apple Account, then go to **My Apps** and refresh SideStore once to finish setup.
+4. Download the latest Pomme IPA from this repository's [Releases](https://github.com/hnhsgd6c9p-glitch/PommeMC-iOS-IPA/releases) page.
+5. In SideStore, open **My Apps**, tap **+**, select the Pomme IPA from Files, and let SideStore sign and install it.
+6. Keep LocalDevVPN connected whenever you install, update, or refresh apps through SideStore. Refresh the app before its signing period expires.
+
+With a free Apple Account, SideStore is limited to 3 active sideloaded apps at a time (including SideStore), and apps generally need refreshing every 7 days. See the [official SideStore installation guide](https://docs.sidestore.io/docs/installation/install) and [FAQ](https://docs.sidestore.io/docs/faq.html).
+
 ### Run it inside LiveContainer
 
 LiveContainer is an app launcher/container, not an emulator. It can run compatible iOS apps inside its own app environment. Pomme's Vulkan/graphics, memory, input, and platform requirements may not all work inside LiveContainer; compatibility is **not guaranteed**.
