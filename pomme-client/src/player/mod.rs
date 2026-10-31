@@ -42,10 +42,10 @@ pub fn is_creative(game_mode: u8) -> bool {
     game_mode == 1
 }
 
-/// `StringUtil.isValidPlayerName`, which `ExtraCodecs.PLAYER_NAME` enforces
-/// before a profile can be looked up by name.
+/// Java server player-name rules: 3–16 ASCII letters, digits, or underscores.
+/// Keep this in sync with SteelMC's `is_valid_player_name`.
 pub fn valid_player_name(name: &str) -> bool {
-    name.chars().count() <= 16 && name.chars().all(|c| ('!'..='~').contains(&c))
+    (3..=16).contains(&name.len()) && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 /// Spectator (3).

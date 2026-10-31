@@ -131,7 +131,11 @@ fn refresh_tokens(store: &dyn SecretStore) -> HashMap<String, String> {
 
 /// The stored account, while its access token is still valid.
 fn account_key(account: &AuthAccount) -> &str {
-    if account.account_id.is_empty() { &account.uuid } else { &account.account_id }
+    if account.account_id.is_empty() {
+        &account.uuid
+    } else {
+        &account.account_id
+    }
 }
 
 pub fn try_restore(store: &dyn SecretStore, key: &str) -> Option<AuthAccount> {
@@ -162,13 +166,17 @@ pub async fn try_restore_or_refresh(
 
 pub fn remove_account(store: &dyn SecretStore, uuid: &str) {
     let mut accounts = get_all_accounts(store);
-    let removed_key = accounts.iter().find(|a| a.uuid == uuid || account_key(a) == uuid)
+    let removed_key = accounts
+        .iter()
+        .find(|a| a.uuid == uuid || account_key(a) == uuid)
         .map(|a| account_key(a).to_owned());
     accounts.retain(|a| a.uuid != uuid && account_key(a) != uuid);
     write_json(store, ACCOUNTS_KEY, &accounts);
     let mut tokens = refresh_tokens(store);
     tokens.remove(uuid);
-    if let Some(key) = removed_key { tokens.remove(&key); }
+    if let Some(key) = removed_key {
+        tokens.remove(&key);
+    }
     write_json(store, REFRESH_KEY, &tokens);
 }
 
@@ -240,7 +248,11 @@ async fn exchange_msa_to_minecraft(
         .await
         .map_err(|e| format!("Xbox Live parse failed: {}", crate::error_chain(e)))?;
 
-    let xui = xbl.display_claims.xui.first().ok_or("No user hash in XBL response")?;
+    let xui = xbl
+        .display_claims
+        .xui
+        .first()
+        .ok_or("No user hash in XBL response")?;
     let user_hash = xui.uhs.clone();
 
     // Amethyst obtains the gamerpic and canonical gamertag from the Xbox
@@ -249,22 +261,47 @@ async fn exchange_msa_to_minecraft(
         .post("https://xsts.auth.xboxlive.com/xsts/authorize")
         .json(&serde_json::json!({"Properties":{"SandboxId":"RETAIL","UserTokens":[&xbl.token]},"RelyingParty":"http://xboxlive.com","TokenType":"JWT"}))
         .send().await.map_err(|e| format!("Xbox profile XSTS failed: {}", crate::error_chain(e)))?;
-    let xbox_xsts: XblResponse = xbox_xsts.error_for_status()
+    let xbox_xsts: XblResponse = xbox_xsts
+        .error_for_status()
         .map_err(|e| format!("Xbox profile XSTS refused: {}", crate::error_chain(e)))?
-        .json().await.map_err(|e| format!("Xbox profile XSTS parse failed: {}", crate::error_chain(e)))?;
-    #[derive(Deserialize)] struct XboxProfileResponse { #[serde(rename="profileUsers")] profile_users: Vec<XboxProfileUser> }
-    #[derive(Deserialize)] struct XboxProfileUser { settings: Vec<XboxProfileSetting> }
-    #[derive(Deserialize)] struct XboxProfileSetting { value: String }
-    let xuid = xbox_xsts.display_claims.xui.first().and_then(|claim| claim.xid.clone()).ok_or("Xbox XSTS response had no XUID")?;
+        .json()
+        .await
+        .map_err(|e| format!("Xbox profile XSTS parse failed: {}", crate::error_chain(e)))?;
+    #[derive(Deserialize)]
+    struct XboxProfileResponse {
+        #[serde(rename = "profileUsers")]
+        profile_users: Vec<XboxProfileUser>,
+    }
+    #[derive(Deserialize)]
+    struct XboxProfileUser {
+        settings: Vec<XboxProfileSetting>,
+    }
+    #[derive(Deserialize)]
+    struct XboxProfileSetting {
+        value: String,
+    }
+    let xuid = xbox_xsts
+        .display_claims
+        .xui
+        .first()
+        .and_then(|claim| claim.xid.clone())
+        .ok_or("Xbox XSTS response had no XUID")?;
     let xbox_profile: XboxProfileResponse = http.get("https://profile.xboxlive.com/users/me/profile/settings?settings=PublicGamerpic,Gamertag")
         .header("x-xbl-contract-version", "2")
         .header("Authorization", format!("XBL3.0 x={};{}", user_hash, xbox_xsts.token))
         .send().await.map_err(|e| format!("Xbox profile fetch failed: {}", crate::error_chain(e)))?
         .error_for_status().map_err(|e| format!("Xbox profile refused: {}", crate::error_chain(e)))?
         .json().await.map_err(|e| format!("Xbox profile parse failed: {}", crate::error_chain(e)))?;
-    let settings = &xbox_profile.profile_users.first().ok_or("Xbox profile response had no user")?.settings;
+    let settings = &xbox_profile
+        .profile_users
+        .first()
+        .ok_or("Xbox profile response had no user")?
+        .settings;
     let gamerpic = settings.first().map(|s| format!("{}&h=120&w=120", s.value));
-    let gamertag = settings.get(1).map(|s| s.value.clone()).ok_or("Xbox profile response had no gamertag")?;
+    let gamertag = settings
+        .get(1)
+        .map(|s| s.value.clone())
+        .ok_or("Xbox profile response had no gamertag")?;
 
     let xsts = http
         .post("https://xsts.auth.xboxlive.com/xsts/authorize")
@@ -312,7 +349,7 @@ async fn exchange_msa_to_minecraft(
     if profile.status() == reqwest::StatusCode::NOT_FOUND {
         // Match Amethyst: Xbox-authenticated accounts without a Java profile
         // receive a demo identity based on their Xbox gamertag.
-        let username = format!("Demo.{gamertag}");
+        let username = demo_player_name(&gamertag);
         return Ok(AuthAccount {
             uuid: "00000000-0000-0000-0000-000000000000".into(),
             username,
@@ -326,7 +363,10 @@ async fn exchange_msa_to_minecraft(
         });
     }
     if !profile.status().is_success() {
-        return Err(format!("Minecraft profile lookup failed: HTTP {}", profile.status()));
+        return Err(format!(
+            "Minecraft profile lookup failed: HTTP {}",
+            profile.status()
+        ));
     }
     let profile: McProfileResponse = profile
         .json()
@@ -344,6 +384,22 @@ async fn exchange_msa_to_minecraft(
         xuid,
         profile_pic_url: None,
     })
+}
+
+/// Builds a Java-compatible offline name for an Xbox account without a Java
+/// profile. Java player names are 3–16 ASCII letters, digits, or underscores;
+/// Xbox gamertags may contain spaces and punctuation and can be longer.
+fn demo_player_name(gamertag: &str) -> String {
+    let safe: String = gamertag
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .take(11)
+        .collect();
+    if safe.is_empty() {
+        "Demo_Player".to_owned()
+    } else {
+        format!("Demo_{safe}")
+    }
 }
 
 /// Why XSTS refused the account, from its `XErr` code.
@@ -366,8 +422,26 @@ fn xsts_error(body: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        AuthAccount, FileStore, get_all_accounts, remove_account, save_account, xsts_error,
+        AuthAccount, FileStore, demo_player_name, get_all_accounts, remove_account, save_account,
+        xsts_error,
     };
+
+    #[test]
+    fn demo_names_follow_java_player_name_rules() {
+        assert_eq!(demo_player_name("caselq"), "Demo_caselq");
+        assert_eq!(demo_player_name("Player Name!"), "Demo_PlayerName");
+        assert_eq!(demo_player_name("abcdefghijklmnop"), "Demo_abcdefghijk");
+        assert_eq!(demo_player_name("!!!"), "Demo_Player");
+        for name in [
+            "Demo_caselq",
+            "Demo_PlayerName",
+            "Demo_abcdefghijk",
+            "Demo_Player",
+        ] {
+            assert!((3..=16).contains(&name.len()));
+            assert!(name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'));
+        }
+    }
 
     #[test]
     fn xsts_errors_read_as_reasons() {

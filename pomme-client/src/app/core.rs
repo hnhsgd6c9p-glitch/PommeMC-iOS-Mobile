@@ -4059,8 +4059,12 @@ mod tests {
     fn player_names_follow_the_codec_rules() {
         assert!(valid_player_name("Dinnerbone"));
         assert!(valid_player_name("a_1234567890_bcd"));
-        // 17 characters, a space, a control character and a non-ASCII one.
+        assert!(valid_player_name("caselq"));
+        // 17 characters, fewer than 3, a period, a space, a control character
+        // and a non-ASCII one.
         assert!(!valid_player_name("a_1234567890_bcde"));
+        assert!(!valid_player_name("ab"));
+        assert!(!valid_player_name("Demo.caselq"));
         assert!(!valid_player_name("two words"));
         assert!(!valid_player_name("tab	here"));
         assert!(!valid_player_name("héllo"));
