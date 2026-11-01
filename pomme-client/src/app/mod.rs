@@ -984,16 +984,31 @@ impl ApplicationHandler for App {
             }
             // Desktop touchscreens already drive the mouse through the OS.
             WindowEvent::Touch(touch) if cfg!(mobile) => {
-                let gameplay = self.world_has_pointer();
-                if let Some(gfx) = self.phase.gfx_mut() {
-                    let width = gfx.renderer.screen_width() as f32;
-                    let height = gfx.renderer.screen_height() as f32;
-                    let layout = TouchLayout {
-                        width,
-                        height,
-                        gs: self.core.menu.gui_scale(width, height),
-                    };
-                    self.core.input.on_touch(&touch, gameplay, &layout);
+                // On phones, tapping anywhere while chat is open dismisses
+                // the chat and its software keyboard. Preserve the draft so
+                // the player can reopen chat without losing what they typed.
+                if touch.phase == winit::event::TouchPhase::Started
+                    && let AppPhase::InGame { gfx, game, .. } = self.phase.get_mut()
+                    && game.chat.is_open()
+                {
+                    game.chat
+                        .close(crate::ui::chat::ChatExitReason::Interrupted);
+                    self.core.input.text_capture = false;
+                    gfx.window.set_ime_allowed(false);
+                    self.soft_keyboard = false;
+                    self.core.apply_cursor_grab(&gfx.window, Some(game));
+                } else {
+                    let gameplay = self.world_has_pointer();
+                    if let Some(gfx) = self.phase.gfx_mut() {
+                        let width = gfx.renderer.screen_width() as f32;
+                        let height = gfx.renderer.screen_height() as f32;
+                        let layout = TouchLayout {
+                            width,
+                            height,
+                            gs: self.core.menu.gui_scale(width, height),
+                        };
+                        self.core.input.on_touch(&touch, gameplay, &layout);
+                    }
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {
