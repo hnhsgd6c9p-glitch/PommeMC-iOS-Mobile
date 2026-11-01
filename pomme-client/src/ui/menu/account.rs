@@ -107,7 +107,7 @@ impl MainMenu {
 
         let (lines, code, buttons): (Vec<String>, Option<String>, Vec<&str>) =
             if self.demo_account {
-                (vec![format!("Xbox demo account: {}", self.username), "Single-player only — multiplayer, servers and Realms are unavailable.".into()], None, vec!["Sign Out", "Back"])
+                (vec![format!("Xbox demo identity: {}", self.username), "Offline identity. Online servers may require a licensed Microsoft account.".into()], None, vec!["Sign Out", "Back"])
             } else { match (&self.access_token, &*self.sign_in.read()) {
                 (Some(_), _) => (
                     vec![format!("Signed in as {}", self.username)],

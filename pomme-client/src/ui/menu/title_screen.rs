@@ -89,19 +89,6 @@ impl MainMenu {
             sprite: SpriteId::MinecraftEdition,
             tint: WHITE,
         });
-        // Keep the account type visible on the title screen, using the same
-        // Minecraft font path as the other menu labels.
-        if self.demo_account {
-            elements.push(MenuElement::Text {
-                x: cx,
-                y: (LOGO_HEIGHT_OFFSET + LOGO_H + EDITION_H + 5.0) * gs,
-                text: "DEMO MODE".into(),
-                scale: fs,
-                color: [1.0, 0.85, 0.25, 1.0],
-                centered: true,
-            });
-        }
-
         self.push_splash(
             &mut elements,
             (cx + SPLASH_WIDTH_OFFSET * gs, SPLASH_HEIGHT_OFFSET * gs),
@@ -113,7 +100,7 @@ impl MainMenu {
         // Realms is never enabled.
         let rows: [(&str, bool); 3] = [
             ("Singleplayer", true),
-            ("Multiplayer", !self.demo_account),
+            ("Multiplayer", true),
             ("Minecraft Realms", false),
         ];
         for (i, (label, enabled)) in rows.iter().enumerate() {

@@ -50,10 +50,6 @@ pub fn open_world(core: &mut AppCore, folder: &str) -> MenuUpdateResult {
 /// Starts `--quick-access-multiplayer` or `--quick-access-singleplayer`.
 pub fn quick_play(core: &mut AppCore, play: QuickPlay) -> MenuUpdateResult {
     match play {
-        QuickPlay::Multiplayer(_server) if core.menu.is_demo_account() => {
-            core.menu.show_disconnect("Demo accounts cannot join multiplayer servers".into(), &core.input.key_bindings);
-            MenuUpdateResult::None
-        }
         QuickPlay::Multiplayer(server) => MenuUpdateResult::Connect {
             // TODO: read the saved server list's protocol for this address to
             // skip the join-time probe.
@@ -184,10 +180,6 @@ pub fn update_menu(
             username,
             protocol,
         } => {
-            if core.menu.is_demo_account() {
-                core.menu.show_disconnect("Demo accounts cannot join multiplayer servers".into(), &core.input.key_bindings);
-                return MenuUpdateResult::None;
-            }
             core.audio.stop_menu_music();
 
             return MenuUpdateResult::Connect {
