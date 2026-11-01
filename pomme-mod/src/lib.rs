@@ -192,7 +192,9 @@ pub fn compatibility_verdict(
         return CompatibilityVerdict::HardJava;
     }
     const SUBSET: &[&str] = &[
-        "nop",
+        // Keep this list identical to the opcodes accepted by
+        // java_subset::execute_static_i32. "nop" is intentionally omitted
+        // because the interpreter rejects 0x00.
         "iconst_m1",
         "iconst_0",
         "iconst_1",
@@ -493,6 +495,25 @@ mod tests {
         assert_eq!(
             compatibility_verdict(&package_report, &inventory),
             CompatibilityVerdict::SimpleJavaCandidate
+        );
+    }
+
+    #[test]
+    fn compatibility_verdict_rejects_opcodes_outside_interpreter_subset() {
+        // "nop" is not implemented by the integer subset interpreter, so an
+        // inventory that only contains it must not be marked SimpleJavaCandidate.
+        let manifest = br#"{"schemaVersion":1,"id":"nop_only","version":"1"}"#;
+        let bytes = package(&[(FABRIC_MANIFEST, manifest), ("Nop.class", b"class")]);
+        let package_report = inspect_package(&bytes).unwrap();
+        let inventory = JarCompatibilityReport {
+            analyzed_classes: 1,
+            class_versions: BTreeMap::from([(52, 1)]),
+            opcode_counts: BTreeMap::from([("nop".into(), 1)]),
+            ..JarCompatibilityReport::default()
+        };
+        assert_eq!(
+            compatibility_verdict(&package_report, &inventory),
+            CompatibilityVerdict::HardJava
         );
     }
 
