@@ -639,6 +639,23 @@ impl ApplicationHandler for App {
             // TODO: Migrate _fully_ to Action system
             WindowEvent::KeyboardInput { event, .. } => {
                 let key = input::key_code(&event);
+                // Winit's iOS software keyboard emits committed characters as
+                // KeyboardInput events with an Unidentified physical key and
+                // `event.text`, not as Ime::Commit. Route those characters to
+                // the focused text consumer even though there is no KeyCode.
+                #[cfg(mobile)]
+                if event.state.is_pressed() && key.is_none() && event.text.is_some() {
+                    let accepts_text = match self.phase.get() {
+                        AppPhase::InMenu { .. } => self.core.menu.text_field_focused(),
+                        AppPhase::Connecting { game, .. } | AppPhase::InGame { game, .. } => {
+                            game.chat.is_open() || game.wants_text_input()
+                        }
+                        _ => false,
+                    };
+                    if accepts_text {
+                        self.core.input.on_menu_key_event(&event);
+                    }
+                }
                 self.phase.transition(|mut app| {
                     if self.core.input.captures_key_event(&event) {
                         self.core.input.on_key_event(&event);
@@ -990,6 +1007,7 @@ impl ApplicationHandler for App {
                 if touch.phase == winit::event::TouchPhase::Started
                     && let AppPhase::InGame { gfx, game, .. } = self.phase.get_mut()
                     && game.chat.is_open()
+                    && !self.core.input.touch().mouse_mode()
                 {
                     game.chat
                         .close(crate::ui::chat::ChatExitReason::Interrupted);

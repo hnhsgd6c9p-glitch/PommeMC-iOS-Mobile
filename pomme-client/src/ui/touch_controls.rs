@@ -30,7 +30,13 @@ pub fn build_touch_controls(
         elements.push(MenuElement::Text {
             x: centre.x,
             y: centre.y - FONT_SIZE * gs / 2.0,
-            text: button.label().to_owned(),
+            text: if button == TouchButton::Mouse && touch.mouse_mode() {
+                "Mouse ON".to_owned()
+            } else if button == TouchButton::Mouse {
+                "Mouse".to_owned()
+            } else {
+                button.label().to_owned()
+            },
             scale: FONT_SIZE * gs,
             color: WHITE,
             centered: true,
@@ -47,4 +53,30 @@ fn push_circle(elements: &mut Vec<MenuElement>, centre: Vec2, radius: f32, color
         corner_radius: radius,
         color,
     });
+}
+
+/// Draws a visible cursor for the virtual mouse, including over menus and
+/// inventory screens where the normal gameplay touch HUD is hidden.
+pub fn build_virtual_mouse_cursor(
+    elements: &mut Vec<MenuElement>,
+    cursor: (f32, f32),
+    gui_scale: f32,
+) {
+    let (x, y) = cursor;
+    let arm = 7.0 * gui_scale;
+    let thickness = 2.0 * gui_scale;
+    let color = [1.0, 1.0, 1.0, 0.95];
+    for (rx, ry, w, h) in [
+        (x - thickness / 2.0, y - arm, thickness, arm * 2.0),
+        (x - arm, y - thickness / 2.0, arm * 2.0, thickness),
+    ] {
+        elements.push(MenuElement::Rect {
+            x: rx,
+            y: ry,
+            w,
+            h,
+            corner_radius: thickness,
+            color,
+        });
+    }
 }
