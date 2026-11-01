@@ -57,7 +57,10 @@ The `pomme-mod` crate currently:
   module paths to avoid straightforward path-traversal and oversized-manifest
   mistakes;
 - includes a Wasmi interpreter prototype with fuel metering and a 16 MiB
-  linear-memory cap for a minimal no-import WebAssembly module.
+  linear-memory cap for a minimal no-import WebAssembly module;
+- parses Java class-file constant pools and method Code attributes, walks
+  bytecode instruction boundaries, resolves invocation references, and
+  aggregates per-JAR opcode/API compatibility inventories.
 
 It does **not** execute Java bytecode, implement Fabric Loader, apply Mixins,
 translate Java classes, or connect the WebAssembly runtime to the live game.
@@ -89,14 +92,29 @@ manifest/ABI is not stable. Benchmark on the target iPhone before deciding
 whether this interpreter profile is fast enough. Do not enable arbitrary native
 dynamic libraries on iOS.
 
-### Stage 4 — Java compatibility research
+### Stage 4 — Java class-file analysis (first implementation)
 
-Build a class-file parser and bytecode feature inventory. Start with simple
-mods that use a narrow subset of Java and Fabric entrypoints. Design an
-intermediate representation and map only supported APIs to the native ABI.
-Treat Mixin-heavy mods as unsupported until class transformation semantics
-are deliberately implemented. Report unsupported instructions and API calls
-rather than silently skipping them.
+The `pomme-mod::classfile` module now contains a defensive class-file reader
+and bytecode inventory. It reads the class header and constant pool, resolves
+class/interface/method references, reads method descriptors and Code
+attributes, walks bytecode instruction boundaries (including `tableswitch`,
+`lookupswitch`, and `wide`), and records per-opcode counts. It also reports
+class-file versions, annotations, static initializers, reflection/method-handle
+usage, native methods, referenced classes, and high-risk Java API references.
+`analyze_fabric_jar` scans the class entries of a JAR and aggregates the
+inventory without extracting files. Malformed or oversized classes are
+counted as skipped rather than executed.
+
+This is analysis only: no Java bytecode is executed or translated yet. The
+next stage is to use real, permissively licensed Fabric mods as fixtures,
+expand the analyzer to cover dynamic call sites, field references, annotations
+and Mixin metadata, then design a small Java bytecode intermediate
+representation. Only a well-defined subset should be translated to the Pomme
+mod ABI/WASM; unsupported instructions and APIs must be explicit.
+
+Treat Mixin-heavy mods, reflection-heavy mods, native methods, and mods that
+require unavailable Java libraries as unsupported until their semantics are
+implemented deliberately. Do not claim universal Java/Fabric compatibility.
 
 ### Stage 5 — compatibility catalogue
 
