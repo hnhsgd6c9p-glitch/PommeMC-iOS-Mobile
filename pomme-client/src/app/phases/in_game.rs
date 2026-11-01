@@ -4016,14 +4016,6 @@ pub fn update_game(
         &text_events,
     );
 
-    if core.input.touch().seen() && core.input.touch().mouse_mode() {
-        crate::ui::touch_controls::build_virtual_mouse_cursor(
-            &mut elements,
-            core.input.cursor_pos(),
-            gs,
-        );
-    }
-
     if game.chat.is_open() && !dialog_open && core.input.cursor_moved_this_frame() {
         let icon = if game
             .chat

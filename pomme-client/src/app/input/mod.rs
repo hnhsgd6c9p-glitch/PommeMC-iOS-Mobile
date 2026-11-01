@@ -1107,6 +1107,7 @@ impl InputState {
                 }
                 TouchOutput::Hotbar(slot) => self.select_hotbar(slot),
                 TouchOutput::PointerMove(p) => self.on_cursor_moved(p.x, p.y),
+                TouchOutput::MenuScroll(delta) => self.on_menu_scroll_xy(0.0, delta),
                 TouchOutput::ActionDown(action) => {
                     self.touch_actions_down.insert(action);
                     self.recent_actions.insert(action, true);
@@ -1116,7 +1117,6 @@ impl InputState {
                     self.recent_actions.remove(&action);
                     self.tap_releases.retain(|pending| *pending != action);
                 }
-                TouchOutput::ToggleMouse => {}
             }
         }
     }
