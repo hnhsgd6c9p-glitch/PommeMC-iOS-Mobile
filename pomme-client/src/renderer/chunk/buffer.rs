@@ -15,8 +15,11 @@ const BUCKET_INDICES: u32 = 49152;
 const INDEX_SIZE: u64 = size_of::<u32>() as u64;
 const BYTES_PER_BUCKET: u64 =
     BUCKET_VERTICES as u64 * size_of::<PackedVertex>() as u64 + BUCKET_INDICES as u64 * INDEX_SIZE;
+#[cfg(not(target_os = "ios"))]
 const MIN_BUCKETS: u32 = 128;
+#[cfg(not(target_os = "ios"))]
 const MAX_BUCKETS: u32 = 2048;
+#[cfg(not(target_os = "ios"))]
 const VRAM_BUDGET_FRACTION: f64 = 0.25;
 // iOS uses unified memory: GPU-local allocations compete directly with the
 // app's CPU heap and the OS. Keep the terrain pool deliberately bounded rather
