@@ -62,8 +62,10 @@ The `pomme-mod` crate currently:
   bytecode instruction boundaries, resolves invocation references, and
   aggregates per-JAR opcode/API compatibility inventories.
 
-It does **not** execute Java bytecode, implement Fabric Loader, apply Mixins,
-translate Java classes, or connect the WebAssembly runtime to the live game.
+The restricted integer interpreter executes only a narrow subset of Java
+bytecode. It does **not** implement a JVM, Fabric Loader, object semantics,
+Java standard libraries, Mixins, general Java-to-WASM translation, or live game
+integration. It cannot currently load normal Fabric mods.
 The `pomme.mod.json` manifest and current WASM export contract are experimental
 and not a stable public format.
 
@@ -105,12 +107,26 @@ usage, native methods, referenced classes, and high-risk Java API references.
 inventory without extracting files. Malformed or oversized classes are
 counted as skipped rather than executed.
 
-This is analysis only: no Java bytecode is executed or translated yet. The
-next stage is to use real, permissively licensed Fabric mods as fixtures,
-expand the analyzer to cover dynamic call sites, field references, annotations
-and Mixin metadata, then design a small Java bytecode intermediate
-representation. Only a well-defined subset should be translated to the Pomme
-mod ABI/WASM; unsupported instructions and APIs must be explicit.
+A first restricted execution slice now exists in `pomme-mod::java_subset`:
+`execute_static_i32` can run static Java methods with integer arguments and an
+integer return using a bounded Rust interpreter. It supports integer constants,
+local loads/stores, integer arithmetic/bitwise operations, comparisons, branches,
+and returns. Each executed instruction consumes fuel, and stack/local bounds
+are checked. Calls, heap/object operations, reflection, native methods, and
+non-integer signatures are rejected. This is not a JVM and does not yet load
+Fabric entrypoints or execute an entire mod.
+
+A `pomme-mod-inspect` command-line tool also prints a JAR's Fabric metadata,
+class-file versions, bytecode opcode frequencies, API references, and detected
+high-risk features. It is a triage tool for choosing realistic first porting
+targets, not a mod loader.
+
+Next, use real, permissively licensed Fabric mods as fixtures, expand the
+interpreter to common compiler output (including constants, arrays, objects,
+method dispatch, exceptions, and selected Java library calls), and build a
+small Java-to-Pomme intermediate representation. Only a well-defined subset
+should be translated to the Pomme mod ABI/WASM; unsupported instructions and
+APIs must be explicit.
 
 Treat Mixin-heavy mods, reflection-heavy mods, native methods, and mods that
 require unavailable Java libraries as unsupported until their semantics are

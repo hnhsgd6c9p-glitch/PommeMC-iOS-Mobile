@@ -13,7 +13,7 @@ pub enum JavaSubsetError {
     ClassFile(#[from] ClassFileError),
     #[error("requested method was not found")]
     MethodNotFound,
-    #[error("only static methods with integer parameters and integer/void returns are supported")]
+    #[error("only static methods with integer parameters and an integer return are supported")]
     UnsupportedSignature,
     #[error("method is not static")]
     NotStatic,
@@ -277,6 +277,15 @@ mod tests {
         assert_eq!(
             execute_static_i32(&bytes, "add", "(II)I", &[19, 23], 20).unwrap(),
             42
+        );
+    }
+
+    #[test]
+    fn enforces_instruction_fuel() {
+        let bytes = simple_arithmetic_class();
+        assert_eq!(
+            execute_static_i32(&bytes, "add", "(II)I", &[1, 2], 1),
+            Err(JavaSubsetError::FuelExhausted)
         );
     }
 
