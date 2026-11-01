@@ -120,9 +120,10 @@ The next translation boundary is now implemented experimentally in
 `pomme-mod::ir`. `lower_static_i32_method` converts the supported bytecode
 subset into typed Rust IR operations (typed integer arithmetic, local access,
 conditions, and returns). Branches retain original bytecode offsets and are
-validated to land on instruction boundaries, giving a future Rust code
-generator a safe basis for basic-block construction. This is a lowering
-prototype only: it does not yet emit Rust source or machine code, perform full
+validated to land on instruction boundaries. A control-flow graph builder
+then splits methods into basic blocks and resolves branch targets to block
+indexes. This provides the structural foundation for a Rust code generator.
+This is still a lowering prototype only: it does not yet emit Rust source or machine code, perform full
 JVM verifier stack analysis, or bridge Fabric APIs. Its accepted instruction
 set is intentionally aligned with the restricted interpreter.
 

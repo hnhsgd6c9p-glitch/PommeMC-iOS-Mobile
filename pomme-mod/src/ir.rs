@@ -102,6 +102,188 @@ pub struct MethodIr {
     pub instructions: Vec<LocatedInstruction>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum BlockTerminator {
+    BranchIfZero {
+        condition: UnaryCondition,
+        target_block: usize,
+        fallthrough_block: usize,
+    },
+    BranchIfCompare {
+        condition: BinaryCondition,
+        target_block: usize,
+        fallthrough_block: usize,
+    },
+    Goto {
+        target_block: usize,
+    },
+    ReturnI32,
+    Fallthrough {
+        target_block: usize,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BasicBlock {
+    pub id: usize,
+    pub start_pc: usize,
+    pub instructions: Vec<LocatedInstruction>,
+    pub terminator: BlockTerminator,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ControlFlowGraph {
+    pub entry_block: usize,
+    pub blocks: Vec<BasicBlock>,
+}
+
+/// Split a lowered method into basic blocks and resolve bytecode branch
+/// offsets to stable block indexes for later Rust code generation.
+pub fn build_control_flow_graph(method: &MethodIr) -> Result<ControlFlowGraph, IrError> {
+    use std::collections::BTreeMap;
+
+    if method.instructions.is_empty() {
+        return Err(IrError::InvalidBytecode);
+    }
+    let pc_to_instruction: BTreeMap<usize, usize> = method
+        .instructions
+        .iter()
+        .enumerate()
+        .map(|(index, instruction)| (instruction.bytecode_pc, index))
+        .collect();
+    if pc_to_instruction.len() != method.instructions.len() {
+        return Err(IrError::InvalidBytecode);
+    }
+
+    let mut leaders = BTreeSet::from([0usize]);
+    for (index, located) in method.instructions.iter().enumerate() {
+        let target = match located.instruction {
+            IrInstruction::BranchIfZero { target_pc, .. }
+            | IrInstruction::BranchIfCompare { target_pc, .. }
+            | IrInstruction::Goto { target_pc } => Some(target_pc),
+            _ => None,
+        };
+        if let Some(target) = target {
+            if !pc_to_instruction.contains_key(&target) {
+                return Err(IrError::InvalidBytecode);
+            }
+            leaders.insert(target);
+        }
+        if matches!(
+            located.instruction,
+            IrInstruction::BranchIfZero { .. }
+                | IrInstruction::BranchIfCompare { .. }
+                | IrInstruction::Goto { .. }
+                | IrInstruction::ReturnI32
+        ) && let Some(next) = method.instructions.get(index + 1)
+        {
+            leaders.insert(next.bytecode_pc);
+        }
+    }
+
+    let leader_indexes: Vec<usize> = leaders
+        .iter()
+        .map(|pc| {
+            pc_to_instruction
+                .get(pc)
+                .copied()
+                .ok_or(IrError::InvalidBytecode)
+        })
+        .collect::<Result<_, _>>()?;
+    let mut block_for_pc = BTreeMap::new();
+    for (block_id, pc) in leaders.iter().enumerate() {
+        block_for_pc.insert(*pc, block_id);
+    }
+
+    let mut blocks = Vec::with_capacity(leader_indexes.len());
+    for (block_id, start_index) in leader_indexes.iter().copied().enumerate() {
+        let end_index = leader_indexes
+            .get(block_id + 1)
+            .copied()
+            .unwrap_or(method.instructions.len());
+        let slice = &method.instructions[start_index..end_index];
+        let last = slice.last().ok_or(IrError::InvalidBytecode)?;
+        let fallthrough_pc = method
+            .instructions
+            .get(end_index)
+            .map(|next| next.bytecode_pc);
+        let (body_end, terminator) = match last.instruction {
+            IrInstruction::BranchIfZero {
+                condition,
+                target_pc,
+            } => {
+                let fallthrough = fallthrough_pc.ok_or(IrError::InvalidBytecode)?;
+                (
+                    slice.len() - 1,
+                    BlockTerminator::BranchIfZero {
+                        condition,
+                        target_block: *block_for_pc
+                            .get(&target_pc)
+                            .ok_or(IrError::InvalidBytecode)?,
+                        fallthrough_block: *block_for_pc
+                            .get(&fallthrough)
+                            .ok_or(IrError::InvalidBytecode)?,
+                    },
+                )
+            }
+            IrInstruction::BranchIfCompare {
+                condition,
+                target_pc,
+            } => {
+                let fallthrough = fallthrough_pc.ok_or(IrError::InvalidBytecode)?;
+                (
+                    slice.len() - 1,
+                    BlockTerminator::BranchIfCompare {
+                        condition,
+                        target_block: *block_for_pc
+                            .get(&target_pc)
+                            .ok_or(IrError::InvalidBytecode)?,
+                        fallthrough_block: *block_for_pc
+                            .get(&fallthrough)
+                            .ok_or(IrError::InvalidBytecode)?,
+                    },
+                )
+            }
+            IrInstruction::Goto { target_pc } => (
+                slice.len() - 1,
+                BlockTerminator::Goto {
+                    target_block: *block_for_pc
+                        .get(&target_pc)
+                        .ok_or(IrError::InvalidBytecode)?,
+                },
+            ),
+            IrInstruction::ReturnI32 => (slice.len() - 1, BlockTerminator::ReturnI32),
+            _ => {
+                let fallthrough = fallthrough_pc.ok_or(IrError::InvalidBytecode)?;
+                (
+                    slice.len(),
+                    BlockTerminator::Fallthrough {
+                        target_block: *block_for_pc
+                            .get(&fallthrough)
+                            .ok_or(IrError::InvalidBytecode)?,
+                    },
+                )
+            }
+        };
+        blocks.push(BasicBlock {
+            id: block_id,
+            start_pc: last_block_start_pc(slice),
+            instructions: slice[..body_end].to_vec(),
+            terminator,
+        });
+    }
+    Ok(ControlFlowGraph {
+        entry_block: 0,
+        blocks,
+    })
+}
+
+fn last_block_start_pc(instructions: &[LocatedInstruction]) -> usize {
+    instructions
+        .first()
+        .map_or(0, |instruction| instruction.bytecode_pc)
+}
+
 /// Lower one static (int, ... int) -> int Java method into typed IR.
 /// Every branch target is checked to land on an instruction boundary.
 pub fn lower_static_i32_method(
@@ -337,6 +519,39 @@ mod tests {
             lower_method("Example", &malformed),
             Err(IrError::InvalidBytecode)
         );
+    }
+
+    #[test]
+    fn builds_basic_blocks_for_conditional_method() {
+        let method = MethodSummary {
+            name: "absolute".into(),
+            descriptor: "(I)I".into(),
+            access_flags: 0x0009,
+            bytecode_bytes: 9,
+            instruction_count: 7,
+            max_stack: 1,
+            max_locals: 1,
+            code: vec![0x1a, 0x9c, 0x00, 0x06, 0x1a, 0x74, 0xac, 0x1a, 0xac],
+            invoked_methods: Vec::new(),
+            field_accesses: Vec::new(),
+        };
+        let ir = lower_method("Example", &method).unwrap();
+        let cfg = build_control_flow_graph(&ir).unwrap();
+        assert_eq!(cfg.entry_block, 0);
+        assert_eq!(cfg.blocks.len(), 3);
+        assert_eq!(cfg.blocks[0].start_pc, 0);
+        assert_eq!(cfg.blocks[1].start_pc, 4);
+        assert_eq!(cfg.blocks[2].start_pc, 7);
+        assert_eq!(
+            cfg.blocks[0].terminator,
+            BlockTerminator::BranchIfZero {
+                condition: UnaryCondition::GreaterOrEqualZero,
+                target_block: 2,
+                fallthrough_block: 1,
+            }
+        );
+        assert_eq!(cfg.blocks[1].terminator, BlockTerminator::ReturnI32);
+        assert_eq!(cfg.blocks[2].terminator, BlockTerminator::ReturnI32);
     }
 
     #[test]

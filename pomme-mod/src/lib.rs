@@ -23,7 +23,8 @@ pub use classfile::{
     analyze_class, analyze_jar_classes,
 };
 pub use ir::{
-    BinaryCondition, IrError, IrInstruction, LocatedInstruction, MethodIr, UnaryCondition,
+    BasicBlock, BinaryCondition, BlockTerminator, ControlFlowGraph, IrError, IrInstruction,
+    LocatedInstruction, MethodIr, UnaryCondition, build_control_flow_graph,
     lower_static_i32_method,
 };
 pub use java_subset::{JavaSubsetError, execute_static_i32};
