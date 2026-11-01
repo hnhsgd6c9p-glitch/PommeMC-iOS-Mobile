@@ -12,7 +12,7 @@ layout(location = 0) out vec4 out_color;
 
 void main() {
     vec3 color = texture(sampler2D(in_tex, in_tex_sampler), v_uv).rgb;
-    vec2 texel = 1.0 / vec2(textureSize(in_tex, 0));
+    vec2 texel = 1.0 / vec2(textureSize(sampler2D(in_tex, in_tex_sampler), 0));
 
     // A low-cost highlight glow, gated to bright neighboring pixels.
     vec3 bloom = vec3(0.0);
