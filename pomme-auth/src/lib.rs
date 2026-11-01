@@ -69,8 +69,8 @@ struct XblDisplayClaims {
 #[derive(Deserialize)]
 struct XblXui {
     uhs: String,
-    #[serde(default)]
-    gt: Option<String>,
+    #[serde(default, rename = "gt")]
+    _gt: Option<String>,
     #[serde(default, rename = "xid", alias = "id")]
     xid: Option<String>,
 }
@@ -141,7 +141,7 @@ fn account_key(account: &AuthAccount) -> &str {
 pub fn try_restore(store: &dyn SecretStore, key: &str) -> Option<AuthAccount> {
     get_all_accounts(store)
         .into_iter()
-        .find(|a| (a.uuid == key || account_key(&a) == key) && a.expires_at > unix_now())
+        .find(|a| (a.uuid == key || account_key(a) == key) && a.expires_at > unix_now())
 }
 
 pub async fn try_refresh(
