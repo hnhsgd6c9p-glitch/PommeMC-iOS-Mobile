@@ -917,6 +917,74 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn inventories_static_and_instance_field_access_references() {
+        fn u2(out: &mut Vec<u8>, value: u16) {
+            out.extend(value.to_be_bytes());
+        }
+        fn u4(out: &mut Vec<u8>, value: u32) {
+            out.extend(value.to_be_bytes());
+        }
+        fn utf8(out: &mut Vec<u8>, value: &str) {
+            out.push(1);
+            u2(out, value.len() as u16);
+            out.extend(value.as_bytes());
+        }
+
+        // Example.read() reads sample/State.count via getstatic.
+        let mut b = Vec::new();
+        u4(&mut b, 0xcafebabe);
+        u2(&mut b, 0);
+        u2(&mut b, 52);
+        u2(&mut b, 14);
+        utf8(&mut b, "Example");       // #1
+        b.push(7); u2(&mut b, 1);       // #2 Class Example
+        utf8(&mut b, "java/lang/Object"); // #3
+        b.push(7); u2(&mut b, 3);       // #4 Class Object
+        utf8(&mut b, "Code");           // #5
+        utf8(&mut b, "read");           // #6
+        utf8(&mut b, "()I");            // #7
+        utf8(&mut b, "sample/State");   // #8
+        b.push(7); u2(&mut b, 8);       // #9 Class State
+        utf8(&mut b, "count");          // #10
+        utf8(&mut b, "I");              // #11
+        b.push(12); u2(&mut b, 10); u2(&mut b, 11); // #12 NameAndType
+        b.push(9); u2(&mut b, 9); u2(&mut b, 12);   // #13 Fieldref
+
+        u2(&mut b, 0x0021); // public super
+        u2(&mut b, 2);      // this
+        u2(&mut b, 4);      // super
+        u2(&mut b, 0);      // interfaces
+        u2(&mut b, 0);      // fields
+        u2(&mut b, 1);      // methods
+        u2(&mut b, 0x0009); // public static
+        u2(&mut b, 6);
+        u2(&mut b, 7);
+        u2(&mut b, 1);      // attributes
+        u2(&mut b, 5);      // Code
+        u4(&mut b, 16);     // Code attribute length
+        u2(&mut b, 1);      // max_stack
+        u2(&mut b, 0);      // max_locals
+        u4(&mut b, 4);      // code length
+        b.extend([0xb2, 0x00, 0x0d, 0xac]); // getstatic #13; ireturn
+        u2(&mut b, 0);      // exception table
+        u2(&mut b, 0);      // nested attributes
+        u2(&mut b, 0);      // class attributes
+
+        let class = analyze_class(&b).unwrap();
+        assert_eq!(
+            class.field_references,
+            BTreeSet::from(["sample/State.count:I [getstatic]".to_owned()])
+        );
+        assert_eq!(class.methods[0].field_accesses.len(), 1);
+        assert_eq!(class.methods[0].field_accesses[0].owner, "sample/State");
+        assert_eq!(class.methods[0].field_accesses[0].name, "count");
+        assert_eq!(class.methods[0].field_accesses[0].opcode, "getstatic");
+
+        let jar = analyze_jar_classes([("Example.class", b)]);
+        assert!(jar.field_references.contains("sample/State.count:I [getstatic]"));
+    }
+
+    #[test]
     fn parses_class_header_methods_and_invocation_references() {
         fn u2(out: &mut Vec<u8>, value: u16) {
             out.extend(value.to_be_bytes());
