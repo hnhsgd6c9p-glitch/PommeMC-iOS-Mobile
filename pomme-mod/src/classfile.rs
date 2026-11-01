@@ -936,19 +936,26 @@ pub(crate) mod tests {
         u2(&mut b, 0);
         u2(&mut b, 52);
         u2(&mut b, 14);
-        utf8(&mut b, "Example");       // #1
-        b.push(7); u2(&mut b, 1);       // #2 Class Example
+        utf8(&mut b, "Example"); // #1
+        b.push(7);
+        u2(&mut b, 1); // #2 Class Example
         utf8(&mut b, "java/lang/Object"); // #3
-        b.push(7); u2(&mut b, 3);       // #4 Class Object
-        utf8(&mut b, "Code");           // #5
-        utf8(&mut b, "read");           // #6
-        utf8(&mut b, "()I");            // #7
-        utf8(&mut b, "sample/State");   // #8
-        b.push(7); u2(&mut b, 8);       // #9 Class State
-        utf8(&mut b, "count");          // #10
-        utf8(&mut b, "I");              // #11
-        b.push(12); u2(&mut b, 10); u2(&mut b, 11); // #12 NameAndType
-        b.push(9); u2(&mut b, 9); u2(&mut b, 12);   // #13 Fieldref
+        b.push(7);
+        u2(&mut b, 3); // #4 Class Object
+        utf8(&mut b, "Code"); // #5
+        utf8(&mut b, "read"); // #6
+        utf8(&mut b, "()I"); // #7
+        utf8(&mut b, "sample/State"); // #8
+        b.push(7);
+        u2(&mut b, 8); // #9 Class State
+        utf8(&mut b, "count"); // #10
+        utf8(&mut b, "I"); // #11
+        b.push(12);
+        u2(&mut b, 10);
+        u2(&mut b, 11); // #12 NameAndType
+        b.push(9);
+        u2(&mut b, 9);
+        u2(&mut b, 12); // #13 Fieldref
 
         u2(&mut b, 0x0021); // public super
         u2(&mut b, 2);      // this
@@ -981,7 +988,10 @@ pub(crate) mod tests {
         assert_eq!(class.methods[0].field_accesses[0].opcode, "getstatic");
 
         let jar = analyze_jar_classes([("Example.class", b)]);
-        assert!(jar.field_references.contains("sample/State.count:I [getstatic]"));
+        assert!(
+            jar.field_references
+                .contains("sample/State.count:I [getstatic]")
+        );
     }
 
     #[test]
