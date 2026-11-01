@@ -28,6 +28,12 @@ const FABRIC_MANIFEST: &str = "fabric.mod.json";
 const POMME_MANIFEST: &str = "pomme.mod.json";
 const MAX_ARCHIVE_ENTRIES: usize = 10_000;
 const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
+/// Hard cap on total decompressed .class bytes read from one JAR.
+const MAX_TOTAL_CLASS_BYTES: u64 = 64 * 1024 * 1024;
+/// Hard cap on the number of .class entries analyzed from one JAR.
+const MAX_CLASS_FILES: usize = 4_000;
+/// Per-class size limit (matches classfile::MAX_CLASS_BYTES).
+const MAX_SINGLE_CLASS_BYTES: u64 = 32 * 1024 * 1024;
 
 #[derive(Debug, Error)]
 pub enum ModError {
@@ -39,6 +45,10 @@ pub enum ModError {
     Json(#[from] serde_json::Error),
     #[error("archive contains too many entries ({0}; maximum {MAX_ARCHIVE_ENTRIES})")]
     TooManyEntries(usize),
+    #[error("archive contains too many class files ({0}; maximum {MAX_CLASS_FILES})")]
+    TooManyClasses(usize),
+    #[error("total decompressed class data exceeds the {MAX_TOTAL_CLASS_BYTES}-byte limit")]
+    TotalClassBytesTooLarge,
     #[error("{0} is missing from the package")]
     MissingManifest(&'static str),
     #[error("{0} exceeds the {MAX_MANIFEST_BYTES}-byte manifest limit")]
@@ -348,20 +358,44 @@ pub fn analyze_fabric_jar(bytes: &[u8]) -> Result<JarCompatibilityReport, ModErr
         return Err(ModError::TooManyEntries(archive.len()));
     }
     let mut classes = Vec::new();
+    let mut total_class_bytes: u64 = 0;
+    let mut skipped_oversized = 0usize;
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index)?;
         let name = entry.name()?.into_owned();
         if !name.ends_with(".class") {
             continue;
         }
-        if entry.size() > 32 * 1024 * 1024 {
+        let declared = entry.size();
+        // Skip individual classes that exceed the per-class limit; count them
+        // as skipped so the verdict stays conservative.
+        if declared > MAX_SINGLE_CLASS_BYTES {
+            skipped_oversized += 1;
             continue;
         }
-        let mut class_bytes = Vec::with_capacity(entry.size() as usize);
+        if classes.len() >= MAX_CLASS_FILES {
+            return Err(ModError::TooManyClasses(
+                classes.len() + skipped_oversized + 1,
+            ));
+        }
+        total_class_bytes = total_class_bytes
+            .checked_add(declared)
+            .ok_or(ModError::TotalClassBytesTooLarge)?;
+        if total_class_bytes > MAX_TOTAL_CLASS_BYTES {
+            return Err(ModError::TotalClassBytesTooLarge);
+        }
+        let mut class_bytes = Vec::with_capacity(declared as usize);
         entry.read_to_end(&mut class_bytes)?;
+        // Defend against ZIP size lies: actual bytes may exceed the declared size.
+        if class_bytes.len() as u64 > MAX_SINGLE_CLASS_BYTES {
+            skipped_oversized += 1;
+            continue;
+        }
         classes.push((name, class_bytes));
     }
-    Ok(analyze_jar_classes(classes))
+    let mut report = analyze_jar_classes(classes);
+    report.skipped_classes += skipped_oversized;
+    Ok(report)
 }
 
 fn read_manifest<T: for<'de> Deserialize<'de>>(
@@ -553,6 +587,34 @@ mod tests {
             compatibility_verdict(&package_report, &inventory),
             CompatibilityVerdict::Unsupported
         );
+    }
+
+    #[test]
+    fn analyze_fabric_jar_analyzes_valid_classes_under_budget() {
+        use std::io::Write;
+
+        use zip::write::SimpleFileOptions;
+        let tiny = classfile::tests::simple_arithmetic_class();
+        let mut cursor = Cursor::new(Vec::new());
+        {
+            let mut zip = zip::ZipWriter::new(&mut cursor);
+            let opts = SimpleFileOptions::default();
+            zip.start_file(FABRIC_MANIFEST, opts).unwrap();
+            zip.write_all(br#"{"schemaVersion":1,"id":"budget_ok","version":"1"}"#)
+                .unwrap();
+            zip.start_file("Tiny.class", opts).unwrap();
+            zip.write_all(&tiny).unwrap();
+            zip.finish().unwrap();
+        }
+        let bytes = cursor.into_inner();
+        let report = analyze_fabric_jar(&bytes).unwrap();
+        assert_eq!(report.analyzed_classes, 1);
+        assert_eq!(report.skipped_classes, 0);
+        // Sanity: budgets are ordered so a single class cannot exceed the total.
+        const {
+            assert!(MAX_TOTAL_CLASS_BYTES >= MAX_SINGLE_CLASS_BYTES);
+            assert!(MAX_CLASS_FILES < MAX_ARCHIVE_ENTRIES);
+        }
     }
 
     #[test]
