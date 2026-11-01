@@ -77,6 +77,8 @@ impl TouchButton {
             Self::Chat => Some(Action::OpenChat),
             Self::Inventory => Some(Action::ToggleInventory),
             Self::Pause => Some(Action::OpenMenu),
+            // Mouse is a mode toggle, not a gameplay action.
+            Self::Mouse => None,
         }
     }
 }
