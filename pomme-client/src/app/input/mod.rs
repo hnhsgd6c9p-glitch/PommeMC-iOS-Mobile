@@ -932,6 +932,21 @@ impl InputState {
         }
     }
 
+    /// Accept committed text from the platform IME (notably the iOS software
+    /// keyboard). Mobile keyboards frequently deliver composed text through
+    /// `WindowEvent::Ime` rather than `KeyEvent::text`, so route it through
+    /// the same ordered edit stream.
+    pub fn on_ime_commit(&mut self, text: &str) {
+        if self.binding_capture || !(self.text_capture || self.menu_capture) {
+            return;
+        }
+        self.text_events.extend(
+            text.chars()
+                .filter(|ch| !ch.is_control())
+                .map(crate::ui::text_edit::TextInputEvent::Char),
+        );
+    }
+
     pub fn drain_text_events(&mut self) -> Vec<crate::ui::text_edit::TextInputEvent> {
         std::mem::take(&mut self.text_events)
     }

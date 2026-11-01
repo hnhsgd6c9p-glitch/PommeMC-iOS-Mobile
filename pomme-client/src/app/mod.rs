@@ -633,6 +633,9 @@ impl ApplicationHandler for App {
             WindowEvent::ModifiersChanged(mods) => {
                 self.core.input.set_modifiers(mods);
             }
+            WindowEvent::Ime(winit::event::Ime::Commit(text)) => {
+                self.core.input.on_ime_commit(&text);
+            }
             // TODO: Migrate _fully_ to Action system
             WindowEvent::KeyboardInput { event, .. } => {
                 let key = input::key_code(&event);
