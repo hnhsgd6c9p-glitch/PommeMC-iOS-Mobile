@@ -6,6 +6,7 @@ members = [
     "pomme-auth",
     "pomme-install",
     "pomme-client",
+    "pomme-mod",
     "pomme-gpu-allocator",
     "pomme-block",
     "pomme-dirs",
@@ -27,6 +28,7 @@ sha1_smol = "1"
 open = "5"
 base64 = "0.23"
 zip = { version = "9.0", default-features = false, features = ["deflate"] }
+wasmi = { version = "2.0", default-features = false, features = ["std", "validate"] }
 tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.13", features = ["json"] }
 # Shared by pomme-client and pomme-protocol; the versions must agree so

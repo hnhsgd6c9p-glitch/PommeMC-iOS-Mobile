@@ -1,0 +1,58 @@
+name: Rust mod compatibility
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - experiment/rust-native-mod-compat
+    paths:
+      - 'pomme-mod/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/mod-compat.yml'
+      - 'docs/rust-native-mod-compat.md'
+      - 'THIRD_PARTY_LICENSES.md'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-mod-compat-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Package tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: mod-compat-${{ matrix.os }}
+      - name: Test package inspection and manifests
+        run: cargo test -p pomme-mod --locked
+      - name: Clippy
+        run: cargo clippy -p pomme-mod --all-targets --locked -- -D warnings
+      - name: Formatting
+        run: cargo fmt -p pomme-mod -- --check
+
+  ios-check:
+    name: iOS compile check (no JVM)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: mod-compat-ios
+      - name: Add iOS target
+        run: rustup target add aarch64-apple-ios
+      - name: Compile mod package layer for iOS
+        run: cargo check -p pomme-mod --target aarch64-apple-ios --locked
