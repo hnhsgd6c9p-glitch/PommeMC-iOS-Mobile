@@ -1,11 +1,10 @@
 //! Safe package inspection and manifest handling for Pomme's Rust-native mod
 //! system.
 //!
-//! This crate deliberately does not execute Java bytecode. Fabric metadata is
-//! parsed so Pomme can identify dependencies and unsupported runtime features
-//! before a user enables a mod. Native Pomme modules use a separate manifest
-//! and a WebAssembly payload, keeping untrusted extensions out of the engine's
-//! address space.
+//! Fabric metadata and Java class files are inspected before a mod is enabled.
+//! A deliberately restricted, fuel-metered integer bytecode interpreter is
+//! available for isolated helper methods; it is not a JVM or Fabric loader.
+//! Native Pomme modules use a separate WebAssembly payload and sandbox.
 
 use std::collections::BTreeMap;
 use std::io::{Cursor, Read};
@@ -132,6 +131,128 @@ pub enum Compatibility {
     /// Contains JVM bytecode or Java entrypoints; it needs translation or a
     /// JVM-compatible runtime.
     RequiresJavaCompatibility,
+}
+
+/// A conservative estimate of how much Java compatibility work a Fabric JAR
+/// needs. This is a porting triage result, not a guarantee that a mod will
+/// load.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CompatibilityVerdict {
+    NativeWasm,
+    MetadataOnly,
+    SimpleJavaCandidate,
+    HardJava,
+    Unsupported,
+}
+
+/// Classify a Fabric package using its metadata and bytecode inventory.
+/// The simple candidate tier only means its observed bytecode fits the current
+/// integer interpreter subset; it does not mean its Fabric entrypoint can run.
+pub fn compatibility_verdict(
+    package: &PackageReport,
+    inventory: &JarCompatibilityReport,
+) -> CompatibilityVerdict {
+    let metadata = match &package.kind {
+        PackageKind::NativeWasm(_) => return CompatibilityVerdict::NativeWasm,
+        PackageKind::FabricJava(metadata) => metadata,
+    };
+    if package.class_files == 0
+        && metadata.entrypoints.is_empty()
+        && metadata.mixins.is_empty()
+        && metadata.access_widener.is_none()
+        && metadata.jars.is_empty()
+    {
+        return CompatibilityVerdict::MetadataOnly;
+    }
+    if inventory.skipped_classes > 0
+        || !inventory.unsupported_or_high_risk_apis.is_empty()
+        || inventory.feature_flags.contains("native_methods")
+        || inventory.class_versions.keys().any(|version| *version > 65)
+    {
+        return CompatibilityVerdict::Unsupported;
+    }
+    let needs_fabric_runtime = !metadata.entrypoints.is_empty()
+        || !metadata.mixins.is_empty()
+        || metadata.access_widener.is_some()
+        || !metadata.jars.is_empty()
+        || package.has_mixin_configs;
+    if needs_fabric_runtime
+        || inventory.feature_flags.iter().any(|feature| {
+            matches!(
+                feature.as_str(),
+                "static_initializers"
+                    | "reflection_or_method_handles"
+                    | "threading_or_concurrency"
+                    | "filesystem_api_usage"
+                    | "network_api_usage"
+                    | "dynamic_class_loading"
+            )
+        })
+    {
+        return CompatibilityVerdict::HardJava;
+    }
+    const SUBSET: &[&str] = &[
+        "nop",
+        "iconst_m1",
+        "iconst_0",
+        "iconst_1",
+        "iconst_2",
+        "iconst_3",
+        "iconst_4",
+        "iconst_5",
+        "bipush",
+        "sipush",
+        "iload",
+        "iload_0",
+        "iload_1",
+        "iload_2",
+        "iload_3",
+        "istore",
+        "istore_0",
+        "istore_1",
+        "istore_2",
+        "istore_3",
+        "pop",
+        "dup",
+        "iadd",
+        "isub",
+        "imul",
+        "idiv",
+        "irem",
+        "ineg",
+        "ishl",
+        "ishr",
+        "iushr",
+        "iand",
+        "ior",
+        "ixor",
+        "iinc",
+        "ifeq",
+        "ifne",
+        "iflt",
+        "ifge",
+        "ifgt",
+        "ifle",
+        "if_icmpeq",
+        "if_icmpne",
+        "if_icmplt",
+        "if_icmpge",
+        "if_icmpgt",
+        "if_icmple",
+        "goto",
+        "ireturn",
+    ];
+    if !inventory.opcode_counts.is_empty()
+        && inventory
+            .opcode_counts
+            .keys()
+            .all(|opcode| SUBSET.contains(&opcode.as_str()))
+        && inventory.invoked_methods.is_empty()
+    {
+        CompatibilityVerdict::SimpleJavaCandidate
+    } else {
+        CompatibilityVerdict::HardJava
+    }
 }
 
 impl PackageReport {
@@ -341,6 +462,76 @@ mod tests {
         };
         assert_eq!(metadata.id, "sample_mod");
         assert_eq!(metadata.depends.get("minecraft").unwrap(), ">=1.21");
+    }
+
+    #[test]
+    fn compatibility_verdict_marks_metadata_only_fabric_packages() {
+        let manifest = br#"{"schemaVersion":1,"id":"metadata_only","version":"1"}"#;
+        let bytes = package(&[(FABRIC_MANIFEST, manifest)]);
+        let package_report = inspect_package(&bytes).unwrap();
+        assert_eq!(
+            compatibility_verdict(&package_report, &JarCompatibilityReport::default()),
+            CompatibilityVerdict::MetadataOnly
+        );
+    }
+
+    #[test]
+    fn compatibility_verdict_only_calls_subset_code_a_candidate() {
+        let manifest = br#"{"schemaVersion":1,"id":"pure_logic","version":"1"}"#;
+        let bytes = package(&[(FABRIC_MANIFEST, manifest), ("Pure.class", b"class")]);
+        let package_report = inspect_package(&bytes).unwrap();
+        let inventory = JarCompatibilityReport {
+            analyzed_classes: 1,
+            class_versions: BTreeMap::from([(52, 1)]),
+            opcode_counts: BTreeMap::from([
+                ("iload_0".into(), 1),
+                ("iadd".into(), 1),
+                ("ireturn".into(), 1),
+            ]),
+            ..JarCompatibilityReport::default()
+        };
+        assert_eq!(
+            compatibility_verdict(&package_report, &inventory),
+            CompatibilityVerdict::SimpleJavaCandidate
+        );
+    }
+
+    #[test]
+    fn compatibility_verdict_marks_fabric_entrypoints_as_hard_java() {
+        let manifest = br#"{"schemaVersion":1,"id":"entrypoint_mod","version":"1","entrypoints":{"main":["Example"]}}"#;
+        let bytes = package(&[(FABRIC_MANIFEST, manifest), ("Example.class", b"class")]);
+        let package_report = inspect_package(&bytes).unwrap();
+        let inventory = JarCompatibilityReport {
+            analyzed_classes: 1,
+            class_versions: BTreeMap::from([(52, 1)]),
+            opcode_counts: BTreeMap::from([("iload_0".into(), 1)]),
+            ..JarCompatibilityReport::default()
+        };
+        assert_eq!(
+            compatibility_verdict(&package_report, &inventory),
+            CompatibilityVerdict::HardJava
+        );
+    }
+
+    #[test]
+    fn compatibility_verdict_rejects_unknown_classes_and_native_methods() {
+        let manifest = br#"{"schemaVersion":1,"id":"risky_mod","version":"1"}"#;
+        let bytes = package(&[(FABRIC_MANIFEST, manifest), ("Risky.class", b"class")]);
+        let package_report = inspect_package(&bytes).unwrap();
+        let mut inventory = JarCompatibilityReport {
+            skipped_classes: 1,
+            ..JarCompatibilityReport::default()
+        };
+        assert_eq!(
+            compatibility_verdict(&package_report, &inventory),
+            CompatibilityVerdict::Unsupported
+        );
+        inventory.skipped_classes = 0;
+        inventory.feature_flags.insert("native_methods".into());
+        assert_eq!(
+            compatibility_verdict(&package_report, &inventory),
+            CompatibilityVerdict::Unsupported
+        );
     }
 
     #[test]

@@ -1,7 +1,7 @@
 use std::process::ExitCode;
 use std::{env, fs};
 
-use pomme_mod::{Compatibility, PackageKind, analyze_fabric_jar, inspect_package};
+use pomme_mod::{PackageKind, analyze_fabric_jar, compatibility_verdict, inspect_package};
 
 fn main() -> ExitCode {
     let Some(path) = env::args_os().nth(1) else {
@@ -44,6 +44,10 @@ fn main() -> ExitCode {
             println!("Initial classification: {:?}", package.compatibility());
             match analyze_fabric_jar(&bytes) {
                 Ok(report) => {
+                    println!(
+                        "Porting verdict: {:?}",
+                        compatibility_verdict(&package, &report)
+                    );
                     println!("\nJava bytecode inventory");
                     println!("Analyzed classes: {}", report.analyzed_classes);
                     println!(
@@ -80,7 +84,7 @@ fn main() -> ExitCode {
         PackageKind::NativeWasm(metadata) => {
             println!("Native Pomme mod: {} {}", metadata.id, metadata.version);
             println!("Module: {}", metadata.module);
-            println!("Compatibility: {:?}", Compatibility::NativeWasm);
+            println!("Compatibility: NativeWasm");
         }
     }
     println!("\nNote: inspection does not mean the mod can currently be loaded into the game.");
