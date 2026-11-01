@@ -16,11 +16,13 @@ use thiserror::Error;
 use zip::ZipArchive;
 
 pub mod classfile;
+pub mod java_subset;
 mod wasm_runtime;
 pub use classfile::{
     ClassAnalysis, ClassFileError, JarCompatibilityReport, MethodReference, MethodSummary,
     analyze_class, analyze_jar_classes,
 };
+pub use java_subset::{JavaSubsetError, execute_static_i32};
 pub use wasm_runtime::{WasmModRuntime, WasmRuntimeError};
 
 const FABRIC_MANIFEST: &str = "fabric.mod.json";
