@@ -36,17 +36,28 @@ pub struct TouchLayout {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TouchButton {
     Jump,
+    Sneak,
+    Sprint,
     Chat,
     Inventory,
     Pause,
 }
 
 impl TouchButton {
-    pub const ALL: [Self; 4] = [Self::Jump, Self::Chat, Self::Inventory, Self::Pause];
+    pub const ALL: [Self; 6] = [
+        Self::Jump,
+        Self::Sneak,
+        Self::Sprint,
+        Self::Chat,
+        Self::Inventory,
+        Self::Pause,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Jump => "Jump",
+            Self::Sneak => "Sneak",
+            Self::Sprint => "Sprint",
             Self::Chat => "Chat",
             Self::Inventory => "Inv",
             Self::Pause => "| |",
@@ -57,6 +68,8 @@ impl TouchButton {
     fn tapped_action(self) -> Option<Action> {
         match self {
             Self::Jump => None,
+            Self::Sneak => Some(Action::Sneak),
+            Self::Sprint => Some(Action::Sprint),
             Self::Chat => Some(Action::OpenChat),
             Self::Inventory => Some(Action::ToggleInventory),
             Self::Pause => Some(Action::OpenMenu),
@@ -70,6 +83,8 @@ impl TouchLayout {
         let inset = 2.0 * BUTTON_RADIUS * self.gs;
         match button {
             TouchButton::Jump => Vec2::new(self.width - inset, self.height - 1.5 * inset),
+            TouchButton::Sneak => Vec2::new(self.width - 3.0 * inset, self.height - 1.5 * inset),
+            TouchButton::Sprint => Vec2::new(self.width - 5.0 * inset, self.height - 1.5 * inset),
             TouchButton::Chat => Vec2::new(self.width - 4.0 * inset, inset),
             TouchButton::Inventory => Vec2::new(self.width - 2.5 * inset, inset),
             TouchButton::Pause => Vec2::new(self.width - inset, inset),

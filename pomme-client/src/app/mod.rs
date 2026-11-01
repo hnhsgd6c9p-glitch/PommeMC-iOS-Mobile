@@ -787,6 +787,12 @@ impl ApplicationHandler for App {
                                                 .input
                                                 .clear_action(crate::app::input::Action::OpenMenu);
                                             if closed {
+                                                #[cfg(mobile)]
+                                                {
+                                                    self.core.input.text_capture = false;
+                                                    gfx.window.set_ime_allowed(false);
+                                                    self.soft_keyboard = false;
+                                                }
                                                 self.core.apply_cursor_grab(
                                                     &gfx.window,
                                                     Some(&mut game),
@@ -1016,6 +1022,13 @@ impl ApplicationHandler for App {
                 if !focused {
                     self.core.menu.end_binding_capture();
                     self.core.input.set_binding_capture(false);
+                    #[cfg(mobile)]
+                    {
+                        if let Some(gfx) = self.phase.gfx_mut() {
+                            gfx.window.set_ime_allowed(false);
+                        }
+                        self.soft_keyboard = false;
+                    }
                 }
                 self.core.unfocused_since = (!focused).then(Instant::now);
                 // The window manager may silently drop a cursor lock on focus
