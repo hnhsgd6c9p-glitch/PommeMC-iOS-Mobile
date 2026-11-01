@@ -2779,9 +2779,11 @@ pub fn update_game(
         core.menu.view_bobbing && !game.deterministic,
     );
     gfx.renderer.set_post_effect(game.drawn_spectator_effect());
-    gfx.renderer.set_builtin_shader(
-        crate::renderer::pipelines::post_effect::BuiltinShader::from_u8(core.menu.builtin_shader),
-    );
+    gfx.renderer.set_builtin_shader(if core.menu.fast_graphics {
+        crate::renderer::pipelines::post_effect::BuiltinShader::Off
+    } else {
+        crate::renderer::pipelines::post_effect::BuiltinShader::from_u8(core.menu.builtin_shader)
+    });
     gfx.renderer.update_third_person_distance(
         game.block_registry.render_view(),
         camera_pivot,
@@ -4335,16 +4337,17 @@ pub fn update_game(
     let moving_block_renders =
         moving_block_renders(game, gfx.renderer.camera_render_position(), partial_tick);
 
-    let shadow_casters = if core.menu.entity_shadows && !benchmark_running {
-        shadow_casters(
-            &entity_renders,
-            &game.item_entity_store,
-            *gfx.renderer.camera_pivot_position(),
-            partial_tick,
-        )
-    } else {
-        Vec::new()
-    };
+    let shadow_casters =
+        if core.menu.entity_shadows && !core.menu.fast_graphics && !benchmark_running {
+            shadow_casters(
+                &entity_renders,
+                &game.item_entity_store,
+                *gfx.renderer.camera_pivot_position(),
+                partial_tick,
+            )
+        } else {
+            Vec::new()
+        };
 
     let block_entity_renders: Vec<crate::renderer::BlockEntityRenderInfo> = if benchmark_running {
         Vec::new()
@@ -4417,7 +4420,7 @@ pub fn update_game(
     }
     // Benchmarks and deterministic tests draw neither particles nor clouds.
     let no_ambience = benchmark_running || game.deterministic;
-    let particle_quads = if no_ambience {
+    let particle_quads = if no_ambience || core.menu.fast_graphics {
         Vec::new()
     } else {
         game.particle_store
@@ -4521,7 +4524,7 @@ pub fn update_game(
         &block_entity_renders,
         &particle_quads,
         &weather_columns,
-        if no_ambience {
+        if no_ambience || core.menu.fast_graphics {
             crate::renderer::CloudMode::Off
         } else {
             core.menu.cloud_mode

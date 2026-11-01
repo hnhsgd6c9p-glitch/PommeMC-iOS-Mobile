@@ -25,6 +25,8 @@ pub enum BuiltinShader {
     Cinematic = 2,
     Warm = 3,
     Cool = 4,
+    Realistic = 5,
+    Fantasy = 6,
 }
 
 impl BuiltinShader {
@@ -34,12 +36,14 @@ impl BuiltinShader {
             2 => Self::Cinematic,
             3 => Self::Warm,
             4 => Self::Cool,
+            5 => Self::Realistic,
+            6 => Self::Fantasy,
             _ => Self::Off,
         }
     }
 
     pub fn cycle(self) -> Self {
-        Self::from_u8((self as u8 + 1) % 5)
+        Self::from_u8((self as u8 + 1) % 7)
     }
 
     pub fn label(self) -> &'static str {
@@ -49,16 +53,20 @@ impl BuiltinShader {
             Self::Cinematic => "Cinematic",
             Self::Warm => "Warm",
             Self::Cool => "Cool",
+            Self::Realistic => "Realistic",
+            Self::Fantasy => "Fantasy",
         }
     }
 
     fn uniforms(self) -> [f32; 4] {
         match self {
             Self::Off => [1.0, 1.0, 0.0, 0.0],
-            Self::Vibrant => [1.28, 1.08, 0.0, 0.10],
-            Self::Cinematic => [0.88, 1.16, -0.025, 0.22],
-            Self::Warm => [1.12, 1.04, 0.10, 0.12],
-            Self::Cool => [1.08, 1.06, -0.09, 0.12],
+            Self::Vibrant => [1.34, 1.12, 0.0, 0.06],
+            Self::Cinematic => [0.92, 1.22, -0.025, 0.28],
+            Self::Warm => [1.16, 1.08, 0.12, 0.10],
+            Self::Cool => [1.12, 1.10, -0.11, 0.10],
+            Self::Realistic => [1.06, 1.16, -0.015, 0.16],
+            Self::Fantasy => [1.42, 1.14, 0.055, 0.18],
         }
     }
 }

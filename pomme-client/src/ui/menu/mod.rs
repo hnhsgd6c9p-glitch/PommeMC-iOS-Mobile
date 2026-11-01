@@ -69,6 +69,10 @@ struct Settings {
     show_autosave_indicator: bool,
     #[serde(default = "default_true")]
     vsync: bool,
+    /// Mobile performance profile: suppresses costly visual work while
+    /// preserving gameplay.
+    #[serde(default)]
+    fast_graphics: bool,
     #[serde(default = "default_max_framerate")]
     max_framerate: u32,
     #[serde(default = "default_true")]
@@ -238,6 +242,7 @@ impl Default for Settings {
             vignette: true,
             entity_shadows: true,
             vsync: true,
+            fast_graphics: false,
             max_framerate: 120,
             show_online_status: true,
             show_current_server: true,
@@ -744,6 +749,7 @@ pub struct MainMenu {
     pub vignette: bool,
     pub entity_shadows: bool,
     pub vsync: bool,
+    pub fast_graphics: bool,
     pub max_framerate: u32,
     pub show_online_status: bool,
     pub show_current_server: bool,
@@ -886,7 +892,7 @@ impl MainMenu {
             credits_keys: 0,
             last_click_index: None,
             gui_scale_setting: settings.gui_scale,
-            render_distance: settings.render_distance,
+            render_distance: settings.render_distance.clamp(2, 80),
             chunk_detail: settings.chunk_detail,
             simulation_distance: settings.simulation_distance,
             server_render_distance: 0,
@@ -908,6 +914,7 @@ impl MainMenu {
             vignette: settings.vignette,
             entity_shadows: settings.entity_shadows,
             vsync: settings.vsync,
+            fast_graphics: settings.fast_graphics,
             max_framerate: settings.max_framerate,
             show_online_status: settings.show_online_status,
             show_current_server: settings.show_current_server,
@@ -1158,6 +1165,7 @@ impl MainMenu {
                 vignette: self.vignette,
                 entity_shadows: self.entity_shadows,
                 vsync: self.vsync,
+                fast_graphics: self.fast_graphics,
                 max_framerate: self.max_framerate,
                 show_online_status: self.show_online_status,
                 show_current_server: self.show_current_server,
@@ -1797,6 +1805,22 @@ mod tests {
             };
             assert_eq!(chat.sanitized().delay_secs, secs, "delay {secs}");
         }
+    }
+
+    #[test]
+    fn fast_graphics_settings_round_trip_and_legacy_default() {
+        let mut legacy = serde_json::to_value(Settings::default()).unwrap();
+        legacy.as_object_mut().unwrap().remove("fast_graphics");
+        let legacy: Settings = serde_json::from_value(legacy).unwrap();
+        assert!(!legacy.fast_graphics);
+
+        let settings = Settings {
+            fast_graphics: true,
+            ..Settings::default()
+        };
+        let json = serde_json::to_string(&settings).unwrap();
+        let loaded: Settings = serde_json::from_str(&json).unwrap();
+        assert!(loaded.fast_graphics);
     }
 
     #[test]

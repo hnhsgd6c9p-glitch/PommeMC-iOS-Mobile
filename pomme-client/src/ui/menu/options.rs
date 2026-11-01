@@ -242,13 +242,14 @@ impl MainMenu {
             .map_or(gs / (w - 8.0 * gs), |span| 1.0 / span)
     }
 
-    /// Upper bound of the render distance slider: the server-announced view
-    /// distance while connected (can exceed 32), 32 otherwise.
+    /// Upper bound of the render distance slider, capped at Pomme's 80-chunk
+    /// client maximum and further limited by a server's announced view
+    /// distance.
     fn render_distance_max(&self) -> u32 {
         if self.server_render_distance > 0 {
-            self.server_render_distance.max(3)
+            self.server_render_distance.clamp(3, 80)
         } else {
-            32
+            80
         }
     }
 
@@ -312,10 +313,15 @@ impl MainMenu {
         } else {
             "Show Autosave Indicator: OFF"
         };
-        let entity_shadows_label = if self.entity_shadows {
+        let entity_shadows_label = if self.entity_shadows && !self.fast_graphics {
             "Entity Shadows: ON"
         } else {
             "Entity Shadows: OFF"
+        };
+        let graphics_label = if self.fast_graphics {
+            "Graphics: Fast"
+        } else {
+            "Graphics: Fancy"
         };
         let (blur_label, blur_frac) = self.menu_background_blur_slider();
         let brightness = brightness_label(self.brightness);
@@ -327,7 +333,7 @@ impl MainMenu {
             OptRow::Pair(fullscreen_label, "Exclusive Fullscreen: OFF"),
             OptRow::Pair(&brightness, "Graphics Backend: Default"),
             OptRow::Header("Quality"),
-            OptRow::Big("Graphics: Fancy"),
+            OptRow::Big(&graphics_label),
             OptRow::Pair("Biome Blend: 5x5", &rd),
             // TODO: static stub, not wired (see mesher::enqueue).
             OptRow::Pair("Prioritize Chunk Updates: None", &sd),
@@ -363,7 +369,6 @@ impl MainMenu {
             "Inactivity FPS Limit:",
             "Exclusive Fullscreen:",
             "Graphics Backend:",
-            "Graphics:",
             "Biome Blend:",
             "Prioritize Chunk Updates:",
             "Simulation Distance:",
@@ -1442,6 +1447,10 @@ impl MainMenu {
                     if label.starts_with("Fullscreen:") {
                         self.set_display_mode(self.display_mode.cycle(), key_bindings);
                     }
+                    if label.starts_with("Graphics:") {
+                        self.fast_graphics = !self.fast_graphics;
+                        self.save_settings(key_bindings);
+                    }
                     if label.starts_with("Clouds:") {
                         self.cloud_mode = self.cloud_mode.cycle();
                         self.save_settings(key_bindings);
@@ -2104,10 +2113,11 @@ mod tests {
 
     #[test]
     fn disabled_prefixes_match_dynamic_option_labels() {
-        let disabled = &["Simulation Distance:", "Graphics:"];
+        let disabled = &["Simulation Distance:"];
 
         assert!(!option_enabled("Simulation Distance: 12 chunks", disabled));
-        assert!(!option_enabled("Graphics: Fancy", disabled));
+        assert!(option_enabled("Graphics: Fancy", disabled));
+        assert!(option_enabled("Graphics: Fast", disabled));
         assert!(option_enabled("Render Distance: 12 chunks", disabled));
         assert!(option_enabled("Graphics Backend: Default", disabled));
     }
