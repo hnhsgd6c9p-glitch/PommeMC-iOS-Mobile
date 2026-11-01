@@ -2778,7 +2778,13 @@ pub fn update_game(
         bob_amount,
         core.menu.view_bobbing && !game.deterministic,
     );
-    gfx.renderer.set_post_effect(game.drawn_spectator_effect());
+    // Spectator post chains require full-frame copies and extra render passes;
+    // Fast mode keeps the gameplay view responsive by skipping them too.
+    gfx.renderer.set_post_effect(if core.menu.fast_graphics {
+        None
+    } else {
+        game.drawn_spectator_effect()
+    });
     gfx.renderer.set_builtin_shader(if core.menu.fast_graphics {
         crate::renderer::pipelines::post_effect::BuiltinShader::Off
     } else {
