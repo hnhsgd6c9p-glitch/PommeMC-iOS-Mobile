@@ -890,6 +890,8 @@ impl InputState {
     // Normalized press data keeps the screen route independent of winit's
     // platform-private KeyEvent fields.
     fn on_menu_key_press(&mut self, code: Option<KeyCode>, text: Option<&str>) {
+        let closes_menu =
+            code.is_some_and(|code| self.key_bindings.matches_key(Action::Close, code));
         // The ordered event stream for caret-editing text fields. Chars are
         // suppressed while the edit modifier is held, like GLFW's char
         // callback for Ctrl (Cmd) chords.
@@ -907,7 +909,7 @@ impl InputState {
         {
             // UIKit's Return key arrives through `UIKeyInput.insertText` as
             // a newline character, with no physical KeyCode on iOS.
-            if text.contains(['\n', '\r']) {
+            if text.contains(['\n', '\r']) && !closes_menu {
                 self.enter_pressed = true;
             }
             for ch in text.chars() {
@@ -920,9 +922,8 @@ impl InputState {
 
         if let Some(code) = code {
             match code {
-                _ if self.key_bindings.matches_key(Action::Close, code) => {
-                    self.escape_pressed = true
-                }
+                KeyCode::Escape => self.escape_pressed = true,
+                _ if closes_menu => self.escape_pressed = true,
                 KeyCode::Enter | KeyCode::NumpadEnter => self.enter_pressed = true,
                 KeyCode::Tab => self.tab_pressed = true,
                 KeyCode::F5 => self.f5_pressed = true,

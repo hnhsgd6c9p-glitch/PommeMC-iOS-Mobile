@@ -396,10 +396,6 @@ impl PostEffects {
         }
     }
 
-    pub fn effect(&self) -> Option<PostEffect> {
-        self.effect
-    }
-
     pub fn is_active(&self) -> bool {
         self.effect.is_some() || self.builtin_shader != BuiltinShader::Off
     }

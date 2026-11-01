@@ -201,7 +201,7 @@ impl TouchControls {
                     last: p,
                     scrolling: false,
                 },
-                vec![TouchOutput::PointerMove(p), TouchOutput::PointerDown],
+                vec![TouchOutput::PointerMove(p)],
             )
         } else if let Some(button) = layout.button_at(p) {
             match button {
@@ -260,10 +260,7 @@ impl TouchControls {
                 *last = p;
                 if *scrolling || delta.length() > 8.0 * layout.gs {
                     *scrolling = true;
-                    vec![
-                        TouchOutput::PointerUp,
-                        TouchOutput::MenuScroll(-delta.y / layout.gs),
-                    ]
+                    vec![TouchOutput::MenuScroll(-delta.y / layout.gs)]
                 } else {
                     vec![TouchOutput::PointerMove(p)]
                 }
@@ -289,7 +286,7 @@ impl TouchControls {
             }
             Some(Role::Pointer {
                 scrolling: false, ..
-            }) => vec![TouchOutput::PointerUp],
+            }) => vec![TouchOutput::PointerDown, TouchOutput::PointerUp],
             Some(Role::Pointer {
                 scrolling: true, ..
             }) => Vec::new(),

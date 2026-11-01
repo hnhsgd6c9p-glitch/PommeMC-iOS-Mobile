@@ -333,7 +333,7 @@ impl MainMenu {
             OptRow::Pair(fullscreen_label, "Exclusive Fullscreen: OFF"),
             OptRow::Pair(&brightness, "Graphics Backend: Default"),
             OptRow::Header("Quality"),
-            OptRow::Big(&graphics_label),
+            OptRow::Big(graphics_label),
             OptRow::Pair("Biome Blend: 5x5", &rd),
             // TODO: static stub, not wired (see mesher::enqueue).
             OptRow::Pair("Prioritize Chunk Updates: None", &sd),
