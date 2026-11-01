@@ -53,6 +53,15 @@ pub struct MethodSummary {
     /// interpreter.
     pub code: Vec<u8>,
     pub invoked_methods: Vec<MethodReference>,
+    pub field_accesses: Vec<FieldReference>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FieldReference {
+    pub owner: String,
+    pub name: String,
+    pub descriptor: String,
+    pub opcode: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -72,6 +81,7 @@ pub struct ClassAnalysis {
     pub opcode_counts: BTreeMap<String, usize>,
     pub referenced_classes: BTreeSet<String>,
     pub invoked_methods: BTreeSet<String>,
+    pub field_references: BTreeSet<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -82,6 +92,7 @@ pub struct JarCompatibilityReport {
     pub opcode_counts: BTreeMap<String, usize>,
     pub referenced_classes: BTreeSet<String>,
     pub invoked_methods: BTreeSet<String>,
+    pub field_references: BTreeSet<String>,
     pub feature_flags: BTreeSet<String>,
     pub unsupported_or_high_risk_apis: BTreeSet<String>,
 }
@@ -96,6 +107,7 @@ enum CpEntry {
         class: u16,
         name_type: u16,
         interface: bool,
+        field: bool,
     },
     Other,
 }
@@ -160,6 +172,7 @@ pub fn analyze_class(bytes: &[u8]) -> Result<ClassAnalysis, ClassFileError> {
                 class: r.u2()?,
                 name_type: r.u2()?,
                 interface: tag == 11,
+                field: tag == 9,
             },
             12 => CpEntry::NameAndType(r.u2()?, r.u2()?),
             3 | 4 => {
@@ -214,6 +227,7 @@ pub fn analyze_class(bytes: &[u8]) -> Result<ClassAnalysis, ClassFileError> {
     let mut opcode_counts = BTreeMap::new();
     let mut referenced_classes = BTreeSet::new();
     let mut invoked_methods = BTreeSet::new();
+    let mut field_references = BTreeSet::new();
     let mut annotations = 0;
     let mut has_static_initializer = false;
     let mut uses_native_methods = false;
@@ -229,6 +243,7 @@ pub fn analyze_class(bytes: &[u8]) -> Result<ClassAnalysis, ClassFileError> {
         let mut max_locals = 0;
         let mut method_code = Vec::new();
         let mut method_invokes = Vec::new();
+        let mut method_field_accesses = Vec::new();
         if method_name == "<clinit>" {
             has_static_initializer = true;
         }
@@ -247,7 +262,7 @@ pub fn analyze_class(bytes: &[u8]) -> Result<ClassAnalysis, ClassFileError> {
                 let instructions = code.take(code_len)?;
                 bytecode_bytes = code_len;
                 method_code.extend_from_slice(instructions);
-                let (counts, calls, count) = decode_bytecode(instructions, &cp)?;
+                let (counts, calls, fields, count) = decode_bytecode(instructions, &cp)?;
                 instruction_count = count;
                 for (op, n) in counts {
                     *opcode_counts.entry(op).or_insert(0) += n;
@@ -261,6 +276,14 @@ pub fn analyze_class(bytes: &[u8]) -> Result<ClassAnalysis, ClassFileError> {
                     }
                     invoked_methods.insert(key);
                     method_invokes.push(call);
+                }
+                for field in fields {
+                    let key = format!(
+                        "{}.{}:{} [{}]",
+                        field.owner, field.name, field.descriptor, field.opcode
+                    );
+                    field_references.insert(key);
+                    method_field_accesses.push(field);
                 }
                 let ex_count = bounded(code.u2()? as usize)?;
                 code.skip(
@@ -286,6 +309,7 @@ pub fn analyze_class(bytes: &[u8]) -> Result<ClassAnalysis, ClassFileError> {
             max_locals,
             code: method_code,
             invoked_methods: method_invokes,
+            field_accesses: method_field_accesses,
         });
     }
     skip_attributes(&mut r, &cp, &mut annotations)?;
@@ -319,6 +343,7 @@ pub fn analyze_class(bytes: &[u8]) -> Result<ClassAnalysis, ClassFileError> {
         opcode_counts,
         referenced_classes,
         invoked_methods,
+        field_references,
     })
 }
 
@@ -341,6 +366,7 @@ where
                 }
                 report.referenced_classes.extend(class.referenced_classes);
                 report.invoked_methods.extend(class.invoked_methods);
+                report.field_references.extend(class.field_references);
                 if class.has_static_initializer {
                     report.feature_flags.insert("static_initializers".into());
                 }
@@ -416,6 +442,7 @@ fn method_ref(cp: &[CpEntry], index: u16) -> Result<MethodReference, ClassFileEr
             class,
             name_type,
             interface,
+            field: false,
         }) => {
             let (name, descriptor) = name_and_type(cp, *name_type)?;
             Ok(MethodReference {
@@ -423,6 +450,29 @@ fn method_ref(cp: &[CpEntry], index: u16) -> Result<MethodReference, ClassFileEr
                 name,
                 descriptor,
                 interface_call: *interface,
+            })
+        }
+        _ => Err(ClassFileError::BadConstant(index)),
+    }
+}
+fn field_ref(
+    cp: &[CpEntry],
+    index: u16,
+    opcode: &str,
+) -> Result<FieldReference, ClassFileError> {
+    match cp.get(index as usize) {
+        Some(CpEntry::Ref {
+            class,
+            name_type,
+            field: true,
+            ..
+        }) => {
+            let (name, descriptor) = name_and_type(cp, *name_type)?;
+            Ok(FieldReference {
+                owner: class_name(cp, *class)?,
+                name,
+                descriptor,
+                opcode: opcode.to_owned(),
             })
         }
         _ => Err(ClassFileError::BadConstant(index)),
@@ -465,11 +515,17 @@ fn count_annotation_attribute(
     Ok(())
 }
 
-type DecodedBytecode = (BTreeMap<String, usize>, Vec<MethodReference>, usize);
+type DecodedBytecode = (
+    BTreeMap<String, usize>,
+    Vec<MethodReference>,
+    Vec<FieldReference>,
+    usize,
+);
 
 fn decode_bytecode(code: &[u8], cp: &[CpEntry]) -> Result<DecodedBytecode, ClassFileError> {
     let mut counts = BTreeMap::new();
     let mut calls = Vec::new();
+    let mut fields = Vec::new();
     let mut pc = 0usize;
     let mut instructions = 0;
     while pc < code.len() {
@@ -485,8 +541,10 @@ fn decode_bytecode(code: &[u8], cp: &[CpEntry]) -> Result<DecodedBytecode, Class
             0xb2..=0xb8 | 0xbb | 0xbd | 0xc0 | 0xc1 => {
                 let index = read_u16(code, pc)?;
                 pc += 2;
-                if (0xb6..=0xb8).contains(&op) {
-                    calls.push(method_ref(cp, index)?);
+                match op {
+                    0xb2..=0xb5 => fields.push(field_ref(cp, index, name)?),
+                    0xb6..=0xb8 => calls.push(method_ref(cp, index)?),
+                    _ => {}
                 }
             }
             0xb9 => {
@@ -543,7 +601,7 @@ fn decode_bytecode(code: &[u8], cp: &[CpEntry]) -> Result<DecodedBytecode, Class
             return Err(ClassFileError::InvalidBytecode);
         }
     }
-    Ok((counts, calls, instructions))
+    Ok((counts, calls, fields, instructions))
 }
 fn read_u16(b: &[u8], p: usize) -> Result<u16, ClassFileError> {
     Ok(u16::from_be_bytes(
