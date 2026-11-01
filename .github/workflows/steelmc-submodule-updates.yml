@@ -1,0 +1,69 @@
+name: SteelMC submodule updates
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Run after the upstream project has had time to publish its weekly changes.
+    - cron: "23 9 * * 1"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: steelmc-submodule-update
+  cancel-in-progress: false
+
+jobs:
+  update-steelmc:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          submodules: true
+          fetch-depth: 0
+
+      - name: Update SteelMC submodule to its upstream default branch
+        id: update
+        shell: bash
+        run: |
+          set -euo pipefail
+          git submodule update --init third_party/SteelMC
+          before="$(git -C third_party/SteelMC rev-parse HEAD)"
+          git -C third_party/SteelMC fetch --depth=1 origin
+          upstream_branch="$(git -C third_party/SteelMC symbolic-ref --short refs/remotes/origin/HEAD | sed 's#^origin/##')"
+          if [[ -z "$upstream_branch" ]]; then
+            echo "::error::Could not determine SteelMC's upstream default branch"
+            exit 1
+          fi
+          git -C third_party/SteelMC checkout --detach "origin/$upstream_branch"
+          after="$(git -C third_party/SteelMC rev-parse HEAD)"
+          echo "before=$before" >> "$GITHUB_OUTPUT"
+          echo "after=$after" >> "$GITHUB_OUTPUT"
+          if [[ "$before" == "$after" ]]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "SteelMC is already up to date ($after)"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "SteelMC update available: $before -> $after"
+          fi
+
+      - name: Create pull request
+        if: steps.update.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: automation/update-steelmc-submodule
+          delete-branch: true
+          commit-message: "chore(deps): update SteelMC submodule"
+          title: "chore(deps): update SteelMC submodule"
+          body: |
+            Automated update of the `third_party/SteelMC` submodule to the upstream default branch.
+
+            - Previous revision: `${{ steps.update.outputs.before }}`
+            - New revision: `${{ steps.update.outputs.after }}`
+
+            CI will validate the proposed revision before it is merged.
+          labels: dependencies
