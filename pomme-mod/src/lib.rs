@@ -15,7 +15,12 @@ use serde::Deserialize;
 use thiserror::Error;
 use zip::ZipArchive;
 
+pub mod classfile;
 mod wasm_runtime;
+pub use classfile::{
+    ClassAnalysis, ClassFileError, JarCompatibilityReport, MethodReference, MethodSummary,
+    analyze_class, analyze_jar_classes,
+};
 pub use wasm_runtime::{WasmModRuntime, WasmRuntimeError};
 
 const FABRIC_MANIFEST: &str = "fabric.mod.json";
@@ -27,6 +32,8 @@ const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
 pub enum ModError {
     #[error("invalid ZIP/JAR archive: {0}")]
     Zip(#[from] zip::result::ZipError),
+    #[error("invalid Java class file: {0}")]
+    ClassFile(#[from] ClassFileError),
     #[error("invalid JSON manifest: {0}")]
     Json(#[from] serde_json::Error),
     #[error("archive contains too many entries ({0}; maximum {MAX_ARCHIVE_ENTRIES})")]
@@ -205,6 +212,31 @@ pub fn inspect_package(bytes: &[u8]) -> Result<PackageReport, ModError> {
         has_mixin_configs,
         nested_jar_count,
     })
+}
+
+/// Analyze every Java class in a Fabric JAR and return a compatibility
+/// inventory. Class entries are bounded individually; malformed classes are
+/// counted as skipped.
+pub fn analyze_fabric_jar(bytes: &[u8]) -> Result<JarCompatibilityReport, ModError> {
+    let mut archive = ZipArchive::new(Cursor::new(bytes))?;
+    if archive.len() > MAX_ARCHIVE_ENTRIES {
+        return Err(ModError::TooManyEntries(archive.len()));
+    }
+    let mut classes = Vec::new();
+    for index in 0..archive.len() {
+        let mut entry = archive.by_index(index)?;
+        let name = entry.name()?.into_owned();
+        if !name.ends_with(".class") {
+            continue;
+        }
+        if entry.size() > 32 * 1024 * 1024 {
+            continue;
+        }
+        let mut class_bytes = Vec::with_capacity(entry.size() as usize);
+        entry.read_to_end(&mut class_bytes)?;
+        classes.push((name, class_bytes));
+    }
+    Ok(analyze_jar_classes(classes))
 }
 
 fn read_manifest<T: for<'de> Deserialize<'de>>(
