@@ -18,6 +18,15 @@ const BYTES_PER_BUCKET: u64 =
 const MIN_BUCKETS: u32 = 128;
 const MAX_BUCKETS: u32 = 2048;
 const VRAM_BUDGET_FRACTION: f64 = 0.25;
+// iOS uses unified memory: GPU-local allocations compete directly with the
+// app's CPU heap and the OS. Keep the terrain pool deliberately bounded rather
+// than treating the reported shared heap like a discrete GPU's VRAM.
+#[cfg(target_os = "ios")]
+const MOBILE_MIN_BUCKETS: u32 = 64;
+#[cfg(target_os = "ios")]
+const MOBILE_MAX_BUCKETS: u32 = 192;
+#[cfg(target_os = "ios")]
+const MOBILE_BUDGET_FRACTION: f64 = 0.05;
 
 /// The cull pass's bindings: meta, frustum, solid indirect/count, cutout
 /// indirect/count.
@@ -110,12 +119,28 @@ impl FreeList {
 }
 
 fn compute_bucket_count(device_local_bytes: u64) -> u32 {
-    let budget = (device_local_bytes as f64 * VRAM_BUDGET_FRACTION) as u64;
+    #[cfg(target_os = "ios")]
+    let (fraction, min_buckets, max_buckets, memory_kind) = (
+        MOBILE_BUDGET_FRACTION,
+        MOBILE_MIN_BUCKETS,
+        MOBILE_MAX_BUCKETS,
+        "shared unified memory",
+    );
+    #[cfg(not(target_os = "ios"))]
+    let (fraction, min_buckets, max_buckets, memory_kind) = (
+        VRAM_BUDGET_FRACTION,
+        MIN_BUCKETS,
+        MAX_BUCKETS,
+        "GPU-local memory",
+    );
+
+    let budget = (device_local_bytes as f64 * fraction) as u64;
     let buckets = (budget / BYTES_PER_BUCKET) as u32;
-    let count = buckets.clamp(MIN_BUCKETS, MAX_BUCKETS);
+    let count = buckets.clamp(min_buckets, max_buckets);
     tracing::info!(
-        "GPU VRAM: {} MB, chunk budget: {} MB, buckets: {}",
+        "GPU memory: {} MB ({}), chunk pool: {} MB, buckets: {}",
         device_local_bytes / (1024 * 1024),
+        memory_kind,
         (count as u64 * BYTES_PER_BUCKET) / (1024 * 1024),
         count
     );
@@ -1575,6 +1600,18 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use super::*;
+
+    #[cfg(target_os = "ios")]
+    #[test]
+    fn ios_unified_memory_chunk_pool_is_bounded() {
+        // Even a device reporting a very large shared heap must not reserve a
+        // desktop-sized terrain pool from memory also needed by the CPU/app.
+        assert_eq!(
+            compute_bucket_count(16 * 1024 * 1024 * 1024),
+            MOBILE_MAX_BUCKETS
+        );
+        assert_eq!(compute_bucket_count(0), MOBILE_MIN_BUCKETS);
+    }
 
     #[test]
     fn build_meta_masks_fades_and_sorts_front_to_back() {
