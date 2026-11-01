@@ -105,10 +105,19 @@ impl MainMenu {
             return result;
         }
 
-        let (lines, code, buttons): (Vec<String>, Option<String>, Vec<&str>) =
-            if self.demo_account {
-                (vec![format!("Xbox demo identity: {}", self.username), "Offline identity. Online servers may require a licensed Microsoft account.".into()], None, vec!["Sign Out", "Back"])
-            } else { match (&self.access_token, &*self.sign_in.read()) {
+        let (lines, code, buttons): (Vec<String>, Option<String>, Vec<&str>) = if self.demo_account
+        {
+            (
+                vec![
+                    format!("Xbox demo identity: {}", self.username),
+                    "Offline identity. Online servers may require a licensed Microsoft account."
+                        .into(),
+                ],
+                None,
+                vec!["Sign Out", "Back"],
+            )
+        } else {
+            match (&self.access_token, &*self.sign_in.read()) {
                 (Some(_), _) => (
                     vec![format!("Signed in as {}", self.username)],
                     None,
@@ -117,7 +126,8 @@ impl MainMenu {
                 (None, SignIn::Idle) if gated => (
                     vec![
                         "Pomme needs a Minecraft account for online play.".into(),
-                        "Sign in with Microsoft to use your Java profile or Xbox demo identity.".into(),
+                        "Sign in with Microsoft to use your Java profile or Xbox demo identity."
+                            .into(),
                     ],
                     None,
                     vec!["Sign In", leave],
@@ -150,7 +160,8 @@ impl MainMenu {
                     vec!["Try Again", leave],
                 ),
                 (None, SignIn::Done(_)) => unreachable!("handled above"),
-            }};
+            }
+        };
 
         let gs = self.gui_scale(screen_w, screen_h);
         let fs = common::FONT_SIZE * gs;

@@ -35,6 +35,10 @@ pub fn forget(store: &dyn SecretStore, uuid: &uuid::Uuid) {
 // TODO: refresh again when a long session outlives the day-long token.
 pub async fn restore(store: &dyn SecretStore) -> Option<AuthAccount> {
     let last = pomme_auth::get_all_accounts(store).pop()?;
-    let key = if last.account_id.is_empty() { &last.uuid } else { &last.account_id };
+    let key = if last.account_id.is_empty() {
+        &last.uuid
+    } else {
+        &last.account_id
+    };
     pomme_auth::try_restore_or_refresh(crate::net::http::client(), store, key).await
 }

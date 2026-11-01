@@ -995,7 +995,10 @@ impl ApplicationHandler for App {
                         .close(crate::ui::chat::ChatExitReason::Interrupted);
                     self.core.input.text_capture = false;
                     gfx.window.set_ime_allowed(false);
-                    self.soft_keyboard = false;
+                    #[cfg(mobile)]
+                    {
+                        self.soft_keyboard = false;
+                    }
                     self.core.apply_cursor_grab(&gfx.window, Some(game));
                 } else {
                     let gameplay = self.world_has_pointer();
