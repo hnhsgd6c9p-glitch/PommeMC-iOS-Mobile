@@ -118,6 +118,9 @@ struct Settings {
     /// The selected shader pack's file or folder name in `shaderpacks/`.
     #[serde(default)]
     shader_pack: Option<String>,
+    /// Selected native post-processing preset (0 = off).
+    #[serde(default)]
+    builtin_shader: u8,
     #[serde(default = "default_attack_indicator")]
     attack_indicator: u8,
     #[serde(default)]
@@ -259,6 +262,7 @@ impl Default for Settings {
             ui_volume: 1.0,
             cloud_mode: 2,
             shader_pack: None,
+            builtin_shader: 0,
             attack_indicator: 1,
             display_mode: 0,
             theme: PanoramaTheme::Java.to_u8(),
@@ -766,6 +770,7 @@ pub struct MainMenu {
     pub cloud_mode: CloudMode,
     /// The selected shader pack, by its name in [`Self::shader_packs_dir`].
     pub shader_pack: Option<String>,
+    pub builtin_shader: u8,
     pub shader_packs_dir: PathBuf,
     pub attack_indicator: crate::ui::hud::AttackIndicatorMode,
     /// `AbstractSliderButton.canChangeValue` for the focused slider: armed
@@ -928,6 +933,7 @@ impl MainMenu {
             display_mode: DisplayMode::from_u8(settings.display_mode),
             cloud_mode: CloudMode::from_u8(settings.cloud_mode),
             shader_pack: settings.shader_pack.clone(),
+            builtin_shader: settings.builtin_shader,
             shader_packs_dir: game_dir.join("shaderpacks"),
             attack_indicator: crate::ui::hud::AttackIndicatorMode::from_u8(
                 settings.attack_indicator,
@@ -1176,6 +1182,7 @@ impl MainMenu {
                 skin_main_hand_right: self.skin_main_hand_right,
                 cloud_mode: self.cloud_mode.to_u8(),
                 shader_pack: self.shader_pack.clone(),
+                builtin_shader: self.builtin_shader,
                 attack_indicator: self.attack_indicator.to_u8(),
                 display_mode: self.display_mode.to_u8(),
                 theme: self.theme.to_u8(),

@@ -15,6 +15,54 @@ pub enum PostEffect {
     Invert,
 }
 
+/// Lightweight, built-in full-frame color grades intended for mobile GPUs.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[repr(u8)]
+pub enum BuiltinShader {
+    #[default]
+    Off = 0,
+    Vibrant = 1,
+    Cinematic = 2,
+    Warm = 3,
+    Cool = 4,
+}
+
+impl BuiltinShader {
+    pub fn from_u8(value: u8) -> Self {
+        match value {
+            1 => Self::Vibrant,
+            2 => Self::Cinematic,
+            3 => Self::Warm,
+            4 => Self::Cool,
+            _ => Self::Off,
+        }
+    }
+
+    pub fn cycle(self) -> Self {
+        Self::from_u8((self as u8 + 1) % 5)
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Off => "OFF",
+            Self::Vibrant => "Vibrant",
+            Self::Cinematic => "Cinematic",
+            Self::Warm => "Warm",
+            Self::Cool => "Cool",
+        }
+    }
+
+    fn uniforms(self) -> [f32; 4] {
+        match self {
+            Self::Off => [1.0, 1.0, 0.0, 0.0],
+            Self::Vibrant => [1.28, 1.08, 0.0, 0.10],
+            Self::Cinematic => [0.88, 1.16, -0.025, 0.22],
+            Self::Warm => [1.12, 1.04, 0.10, 0.12],
+            Self::Cool => [1.08, 1.06, -0.09, 0.12],
+        }
+    }
+}
+
 impl PostEffect {
     /// The `post_effect/` chain's id.
     #[cfg(feature = "test-harness")]
@@ -248,6 +296,7 @@ impl SpiderTargets {
 
 pub struct PostEffects {
     effect: Option<PostEffect>,
+    builtin_shader: BuiltinShader,
     samplers: Samplers,
     frame: FrameTargets,
     spider: Option<SpiderTargets>,
@@ -261,6 +310,7 @@ pub struct PostEffects {
     bits: rhi::backend::RenderPipeline,
     box_blur: rhi::backend::RenderPipeline,
     blit: rhi::backend::RenderPipeline,
+    builtin_grade: rhi::backend::RenderPipeline,
     spiderclip: rhi::backend::RenderPipeline,
 }
 
@@ -302,6 +352,7 @@ impl PostEffects {
         };
         Self {
             effect: None,
+            builtin_shader: BuiltinShader::Off,
             frame: FrameTargets::new(device, &samplers, extent),
             spider: None,
             samplers,
@@ -318,6 +369,10 @@ impl PostEffects {
                 shader::include_shader!("post_box_blur.frag"),
             ),
             blit: pipeline("post blit", shader::include_shader!("post_blit.frag")),
+            builtin_grade: pipeline(
+                "built-in mobile shader",
+                shader::include_shader!("post_builtin_grade.frag"),
+            ),
             spiderclip: post::create_pipeline(
                 device,
                 post::targets(),
@@ -335,6 +390,14 @@ impl PostEffects {
 
     pub fn effect(&self) -> Option<PostEffect> {
         self.effect
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.effect.is_some() || self.builtin_shader != BuiltinShader::Off
+    }
+
+    pub fn set_builtin_shader(&mut self, shader: BuiltinShader) {
+        self.builtin_shader = shader;
     }
 
     /// Sets the effect to run, freeing the spider's targets once it stops.
@@ -461,10 +524,12 @@ impl PostEffects {
         encoder: &rhi::backend::CommandEncoder,
         frame: rhi::backend::TextureHandle,
     ) {
-        let Some(effect) = self.effect else {
+        let effect = self.effect;
+        let shader = self.builtin_shader;
+        if effect.is_none() && shader == BuiltinShader::Off {
             return;
-        };
-        if effect == PostEffect::Spider && self.spider.is_none() {
+        }
+        if effect == Some(PostEffect::Spider) && self.spider.is_none() {
             self.spider = Some(self.make_spider_targets(device));
         }
         self.capture(device, encoder, frame);
@@ -474,11 +539,11 @@ impl PostEffects {
         };
         let nearest = |target| self.group(target, false);
         match effect {
-            PostEffect::Invert => {
+            Some(PostEffect::Invert) => {
                 pass(Target::Swap, &self.invert, nearest(Target::Main), &[0.8]);
                 pass(Target::Main, &self.blit, nearest(Target::Swap), &[1.0; 4]);
             }
-            PostEffect::Creeper => {
+            Some(PostEffect::Creeper) => {
                 #[rustfmt::skip]
                 let matrices = [
                     0.0, 0.0, 0.0, 0.0,
@@ -498,7 +563,7 @@ impl PostEffects {
                     &[16.0, 4.0],
                 );
             }
-            PostEffect::Spider => {
+            Some(PostEffect::Spider) => {
                 for (radius, blurred) in [(15.0, Target::LargeBlur), (7.0, Target::SmallBlur)] {
                     self.box_blur(device, encoder, Target::Main, Target::Temp, blurred, radius);
                 }
@@ -513,6 +578,16 @@ impl PostEffects {
                     &[1.0, 0.8, 0.8, 1.0],
                 );
             }
+            None => {}
+        }
+        if shader != BuiltinShader::Off {
+            pass(
+                Target::Swap,
+                &self.builtin_grade,
+                nearest(Target::Main),
+                &shader.uniforms(),
+            );
+            pass(Target::Main, &self.blit, nearest(Target::Swap), &[1.0; 4]);
         }
     }
 
@@ -593,6 +668,7 @@ impl PostEffects {
             self.bits,
             self.box_blur,
             self.blit,
+            self.builtin_grade,
             self.spiderclip,
         ] {
             pipeline.destroy(device);

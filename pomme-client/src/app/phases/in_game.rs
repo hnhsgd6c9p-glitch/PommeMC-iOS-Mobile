@@ -2779,6 +2779,9 @@ pub fn update_game(
         core.menu.view_bobbing && !game.deterministic,
     );
     gfx.renderer.set_post_effect(game.drawn_spectator_effect());
+    gfx.renderer.set_builtin_shader(
+        crate::renderer::pipelines::post_effect::BuiltinShader::from_u8(core.menu.builtin_shader),
+    );
     gfx.renderer.update_third_person_distance(
         game.block_registry.render_view(),
         camera_pivot,

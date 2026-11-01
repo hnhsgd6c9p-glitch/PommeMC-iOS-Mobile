@@ -296,6 +296,11 @@ impl MainMenu {
             "Shader Pack: {}",
             self.shader_pack.as_deref().unwrap_or("OFF")
         );
+        let builtin_shader_label = format!(
+            "Built-in Shader: {}",
+            crate::renderer::pipelines::post_effect::BuiltinShader::from_u8(self.builtin_shader)
+                .label()
+        );
         let attack_label = format!("Attack Indicator: {}", self.attack_indicator.label());
         let vignette_label = if self.vignette {
             "Vignette: ON"
@@ -334,6 +339,7 @@ impl MainMenu {
             OptRow::Pair("Cutout Leaves: Fancy", "Improved Transparency: OFF"),
             OptRow::Pair("Texture Filtering: None", "Max Anisotropy: 1"),
             OptRow::Pair("Weather Radius: 10", &shader_label),
+            OptRow::PairLeft(&builtin_shader_label),
             OptRow::Header("Preferences"),
             OptRow::Pair(autosave_label, vignette_label),
             OptRow::Pair(&attack_label, "Chunk Fade-in: 1.0s"),
@@ -1443,6 +1449,14 @@ impl MainMenu {
                     if label.starts_with("Shader Pack:") {
                         self.shader_pack =
                             next_shader_pack(&self.shader_packs_dir, self.shader_pack.as_deref());
+                        self.save_settings(key_bindings);
+                    }
+                    if label.starts_with("Built-in Shader:") {
+                        self.builtin_shader =
+                            crate::renderer::pipelines::post_effect::BuiltinShader::from_u8(
+                                self.builtin_shader,
+                            )
+                            .cycle() as u8;
                         self.save_settings(key_bindings);
                     }
                     if label.starts_with("Attack Indicator:") {

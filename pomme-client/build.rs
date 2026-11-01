@@ -129,6 +129,7 @@ fn main() {
         ("lightmap.frag", shaderc::ShaderKind::Fragment),
         ("post_flip.frag", shaderc::ShaderKind::Fragment),
         ("post_invert.frag", shaderc::ShaderKind::Fragment),
+        ("post_builtin_grade.frag", shaderc::ShaderKind::Fragment),
         ("post_color_convolve.frag", shaderc::ShaderKind::Fragment),
         ("post_bits.frag", shaderc::ShaderKind::Fragment),
         ("post_box_blur.frag", shaderc::ShaderKind::Fragment),
