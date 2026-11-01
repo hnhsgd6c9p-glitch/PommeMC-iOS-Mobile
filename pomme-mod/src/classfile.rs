@@ -455,11 +455,7 @@ fn method_ref(cp: &[CpEntry], index: u16) -> Result<MethodReference, ClassFileEr
         _ => Err(ClassFileError::BadConstant(index)),
     }
 }
-fn field_ref(
-    cp: &[CpEntry],
-    index: u16,
-    opcode: &str,
-) -> Result<FieldReference, ClassFileError> {
+fn field_ref(cp: &[CpEntry], index: u16, opcode: &str) -> Result<FieldReference, ClassFileError> {
     match cp.get(index as usize) {
         Some(CpEntry::Ref {
             class,
@@ -958,24 +954,24 @@ pub(crate) mod tests {
         u2(&mut b, 12); // #13 Fieldref
 
         u2(&mut b, 0x0021); // public super
-        u2(&mut b, 2);      // this
-        u2(&mut b, 4);      // super
-        u2(&mut b, 0);      // interfaces
-        u2(&mut b, 0);      // fields
-        u2(&mut b, 1);      // methods
+        u2(&mut b, 2); // this
+        u2(&mut b, 4); // super
+        u2(&mut b, 0); // interfaces
+        u2(&mut b, 0); // fields
+        u2(&mut b, 1); // methods
         u2(&mut b, 0x0009); // public static
         u2(&mut b, 6);
         u2(&mut b, 7);
-        u2(&mut b, 1);      // attributes
-        u2(&mut b, 5);      // Code
-        u4(&mut b, 16);     // Code attribute length
-        u2(&mut b, 1);      // max_stack
-        u2(&mut b, 0);      // max_locals
-        u4(&mut b, 4);      // code length
+        u2(&mut b, 1); // attributes
+        u2(&mut b, 5); // Code
+        u4(&mut b, 16); // Code attribute length
+        u2(&mut b, 1); // max_stack
+        u2(&mut b, 0); // max_locals
+        u4(&mut b, 4); // code length
         b.extend([0xb2, 0x00, 0x0d, 0xac]); // getstatic #13; ireturn
-        u2(&mut b, 0);      // exception table
-        u2(&mut b, 0);      // nested attributes
-        u2(&mut b, 0);      // class attributes
+        u2(&mut b, 0); // exception table
+        u2(&mut b, 0); // nested attributes
+        u2(&mut b, 0); // class attributes
 
         let class = analyze_class(&b).unwrap();
         assert_eq!(
