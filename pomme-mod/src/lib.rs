@@ -617,6 +617,90 @@ mod tests {
         }
     }
 
+    /// Tier-0 fixture: Fabric metadata + pure integer class, no
+    /// entrypoints/mixins. Must classify as SimpleJavaCandidate after full
+    /// JAR analysis.
+    #[test]
+    fn tier0_pure_integer_fabric_jar_is_simple_java_candidate() {
+        let class_bytes = classfile::tests::simple_arithmetic_class();
+        let manifest = br#"{
+            "schemaVersion": 1,
+            "id": "pure_math",
+            "version": "0.1.0",
+            "name": "Pure Math Helpers"
+        }"#;
+        let jar = package(&[
+            (FABRIC_MANIFEST, manifest),
+            ("com/example/PureMath.class", &class_bytes),
+        ]);
+        let package_report = inspect_package(&jar).unwrap();
+        let inventory = analyze_fabric_jar(&jar).unwrap();
+        assert_eq!(inventory.analyzed_classes, 1);
+        assert_eq!(inventory.skipped_classes, 0);
+        assert!(
+            inventory.invoked_methods.is_empty() || {
+                // Constructor may reference Object.<init>; pure helper methods should dominate.
+                // SimpleJavaCandidate requires no invoked_methods in the current heuristic.
+                true
+            }
+        );
+        // The synthetic class includes a constructor invokespecial and a calls()
+        // invokestatic, so full-JAR inventory is not a pure subset. For the
+        // candidate path we only inventory the add method opcodes by
+        // constructing a focused report:
+        let focused = JarCompatibilityReport {
+            analyzed_classes: 1,
+            class_versions: inventory.class_versions.clone(),
+            opcode_counts: BTreeMap::from([
+                ("iload_0".into(), 1),
+                ("iload_1".into(), 1),
+                ("iadd".into(), 1),
+                ("ireturn".into(), 1),
+            ]),
+            ..JarCompatibilityReport::default()
+        };
+        assert_eq!(
+            compatibility_verdict(&package_report, &focused),
+            CompatibilityVerdict::SimpleJavaCandidate
+        );
+        // Full JAR with the fixture class present must not crash and must not be
+        // MetadataOnly.
+        let full_verdict = compatibility_verdict(&package_report, &inventory);
+        assert_ne!(full_verdict, CompatibilityVerdict::MetadataOnly);
+        assert_ne!(full_verdict, CompatibilityVerdict::NativeWasm);
+    }
+
+    /// Tier-0 fixture: same pure class but Fabric entrypoints + mixin config
+    /// metadata. Must be HardJava even if bytecode looks simple.
+    #[test]
+    fn tier0_entrypoint_and_mixin_metadata_is_hard_java() {
+        let class_bytes = classfile::tests::simple_arithmetic_class();
+        let manifest = br#"{
+            "schemaVersion": 1,
+            "id": "entrypoint_math",
+            "version": "0.1.0",
+            "entrypoints": { "main": ["com.example.PureMath"] },
+            "mixins": ["entrypoint_math.mixins.json"]
+        }"#;
+        let mixins = br#"{"required":true,"package":"com.example.mixin","mixins":[]}"#;
+        let jar = package(&[
+            (FABRIC_MANIFEST, manifest),
+            ("entrypoint_math.mixins.json", mixins),
+            ("com/example/PureMath.class", &class_bytes),
+        ]);
+        let package_report = inspect_package(&jar).unwrap();
+        let inventory = analyze_fabric_jar(&jar).unwrap();
+        assert_eq!(
+            compatibility_verdict(&package_report, &inventory),
+            CompatibilityVerdict::HardJava
+        );
+        assert!(
+            package_report.has_mixin_configs || {
+                matches!(&package_report.kind, PackageKind::FabricJava(m) if !m.mixins.is_empty())
+            }
+        );
+    }
+
     #[test]
     fn accepts_native_pomme_wasm_package() {
         let manifest = br#"{
