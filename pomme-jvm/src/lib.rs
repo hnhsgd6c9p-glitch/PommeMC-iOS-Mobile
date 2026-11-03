@@ -191,7 +191,7 @@ mod tests {
     #[test]
     fn executes_integer_arithmetic_and_return() {
         // (6 * 7) - 2
-        let code = [0x08, 0x09, 0x68, 0x05, 0x64, 0xac];
+        let code = [0x10, 0x06, 0x10, 0x07, 0x68, 0x05, 0x64, 0xac];
         assert_eq!(Vm::default().execute_static_int(&code, &[]), Ok(40));
     }
 
@@ -217,7 +217,7 @@ mod tests {
     #[test]
     fn fuel_bounds_infinite_loops() {
         let vm = Vm::new(ExecutionLimits { fuel: 4, ..ExecutionLimits::default() });
-        assert_eq!(vm.execute(&[0xa7, 0xff, 0xff], &[]), Err(VmError::FuelExhausted));
+        assert_eq!(vm.execute(&[0xa7, 0x00, 0x00], &[]), Err(VmError::FuelExhausted));
     }
 
     #[test]
