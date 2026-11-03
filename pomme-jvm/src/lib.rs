@@ -265,20 +265,24 @@ pub fn run_fabric_mod_jar(bytes: &[u8], fuel_per_entrypoint: u64) -> Result<ModR
     }
 
     let metadata = {
-        let mut file = archive.by_name("fabric.mod.json")
+        let file = archive.by_name("fabric.mod.json")
             .map_err(|_| ModExecutionError::MissingFabricMetadata)?;
-        if file.size() > 1024 * 1024 {
+        let mut raw = Vec::new();
+        file.take(1024 * 1024 + 1).read_to_end(&mut raw)?;
+        if raw.len() > 1024 * 1024 {
             return Err(ModExecutionError::InvalidMetadata);
         }
-        let mut raw = Vec::with_capacity(file.size() as usize);
-        file.read_to_end(&mut raw)?;
         serde_json::from_slice::<FabricModMetadata>(&raw)?
     };
-    if metadata.schema_version != 1 || metadata.id.is_empty() || metadata.id.len() > 64 {
+    let valid_id = !metadata.id.is_empty()
+        && metadata.id.len() <= 64
+        && metadata.id.as_bytes()[0].is_ascii_alphabetic()
+        && metadata.id.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-');
+    if metadata.schema_version != 1 || !valid_id {
         return Err(ModExecutionError::InvalidMetadata);
     }
     let main = metadata.entrypoints.get("main").ok_or(ModExecutionError::NoMainEntrypoints)?;
-    if main.is_empty() {
+    if main.is_empty() || main.len() > 256 {
         return Err(ModExecutionError::NoMainEntrypoints);
     }
 
@@ -289,15 +293,279 @@ pub fn run_fabric_mod_jar(bytes: &[u8], fuel_per_entrypoint: u64) -> Result<ModR
         let class_name = value.as_str()
             .or_else(|| value.get("value").and_then(serde_json::Value::as_str))
             .ok_or(ModExecutionError::InvalidEntrypoint)?;
+        let valid_name = !class_name.is_empty()
+            && class_name.len() <= 512
+            && class_name.split('.').all(|part| {
+                !part.is_empty()
+                    && part.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'
+        let (executed, mut class_logs) =
+            execute_minimal_fabric_entrypoint(&class_bytes, class_name, fuel_per_entrypoint)?;
+        instructions_executed = instructions_executed.saturating_add(executed);
+        logs.append(&mut class_logs);
+        initialized_classes.push(class_name.to_owned());
+    }
+
+    Ok(ModRunReport {
+        mod_id: metadata.id,
+        initialized_classes,
+        instructions_executed,
+        logs,
+    })
+}
+
+fn execute_minimal_fabric_entrypoint(
+    class_bytes: &[u8],
+    display_name: &str,
+    fuel: u64,
+) -> Result<(u64, Vec<String>), ModExecutionError> {
+    let class = pomme_mod::analyze_class(class_bytes)?;
+    if !(45..=65).contains(&class.major_version) {
+        return Err(ModExecutionError::UnsupportedClassVersion(display_name.to_owned()));
+    }
+    if class.fields != 0
+        || class.has_static_initializer
+        || class.access_flags & 0x0001 == 0
+        || !class.interfaces.iter().any(|name| name == "net/fabricmc/api/ModInitializer")
+    {
+        return Err(ModExecutionError::UnsupportedClassShape(display_name.to_owned()));
+    }
+
+    let constructor = class.methods.iter()
+        .find(|method| method.name == "<init>" && method.descriptor == "()V")
+        .ok_or_else(|| ModExecutionError::UnsupportedConstructor(display_name.to_owned()))?;
+    let valid_constructor = constructor.access_flags & 0x0001 != 0
+        && constructor.code.len() == 5
+        && constructor.code[0] == 0x2a
+        && constructor.code[1] == 0xb7
+        && constructor.code[4] == 0xb1
+        && constructor.invoked_methods.len() == 1
+        && constructor.invoked_methods[0].owner == "java/lang/Object"
+        && constructor.invoked_methods[0].name == "<init>"
+        && constructor.invoked_methods[0].descriptor == "()V";
+    if !valid_constructor {
+        return Err(ModExecutionError::UnsupportedConstructor(display_name.to_owned()));
+    }
+
+    let initializer = class.methods.iter()
+        .find(|method| method.name == "onInitialize" && method.descriptor == "()V")
+        .ok_or_else(|| ModExecutionError::MissingInitializer(display_name.to_owned()))?;
+    if initializer.access_flags & 0x0001 == 0 || initializer.access_flags & 0x0008 != 0 {
+        return Err(ModExecutionError::MissingInitializer(display_name.to_owned()));
+    }
+
+    // First object-model milestone: the receiver is represented by a checked
+    // placeholder local. The supported method body cannot inspect or mutate
+    // object fields; it can emit messages through the Pomme Java bridge.
+    let code = &initializer.code;
+    let mut pc = 0usize;
+    let mut fuel_left = fuel;
+    let mut instructions = 0u64;
+    let mut stack: Vec<String> = Vec::with_capacity(usize::from(initializer.max_stack));
+    let mut logs = Vec::new();
+    loop {
+        if fuel_left == 0 {
+            return Err(ModExecutionError::Vm(VmError::FuelExhausted));
+        }
+        fuel_left -= 1;
+        instructions += 1;
+        let opcode = *code.get(pc).ok_or_else(|| ModExecutionError::UnsupportedInitializer(display_name.to_owned()))?;
+        pc += 1;
+        match opcode {
+            0x00 => {}
+            0x12 => {
+                let index = *code.get(pc).ok_or_else(|| ModExecutionError::UnsupportedInitializer(display_name.to_owned()))? as u16;
+                pc += 1;
+                let value = class.string_constants.get(&index)
+                    .ok_or_else(|| ModExecutionError::UnsupportedInitializer(display_name.to_owned()))?;
+                if stack.len() >= usize::from(initializer.max_stack) {
+                    return Err(ModExecutionError::UnsupportedInitializer(display_name.to_owned()));
+                }
+                stack.push(value.clone());
+            }
+            0x13 => {
+                let bytes = code.get(pc..pc + 2)
+                    .ok_or_else(|| ModExecutionError::UnsupportedInitializer(display_name.to_owned()))?;
+                pc += 2;
+                let index = u16::from_be_bytes([bytes[0], bytes[1]]);
+                let value = class.string_constants.get(&index)
+                    .ok_or_else(|| ModExecutionError::UnsupportedInitializer(display_name.to_owned()))?;
+                if stack.len() >= usize::from(initializer.max_stack) {
+                    return Err(ModExecutionError::UnsupportedInitializer(display_name.to_owned()));
+                }
+                stack.push(value.clone());
+            }
+            0xb8 => {
+                let bytes = code.get(pc..pc + 2)
+                    .ok_or_else(|| ModExecutionError::UnsupportedInitializer(display_name.to_owned()))?;
+                pc += 2;
+                let index = u16::from_be_bytes([bytes[0], bytes[1]]);
+                let method = class.method_references.get(&index)
+                    .ok_or_else(|| ModExecutionError::UnsupportedInitializer(display_name.to_owned()))?;
+                if method.owner != "pomme/api/Pomme"
+                    || method.name != "log"
+                    || method.descriptor != "(Ljava/lang/String;)V"
+                {
+                    return Err(ModExecutionError::UnsupportedInitializer(display_name.to_owned()));
+                }
+                logs.push(stack.pop().ok_or_else(|| ModExecutionError::UnsupportedInitializer(display_name.to_owned()))?);
+            }
+            0xb1 => {
+                if !stack.is_empty() {
+                    return Err(ModExecutionError::UnsupportedInitializer(display_name.to_owned()));
+                }
+                return Ok((instructions, logs));
+            }
+            _ => return Err(ModExecutionError::UnsupportedInitializer(display_name.to_owned())),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+
+    fn tiny_fabric_mod_jar() -> Vec<u8> {
+        use std::io::Write;
+        use zip::write::SimpleFileOptions;
+
+        fn u2(out: &mut Vec<u8>, value: u16) { out.extend(value.to_be_bytes()); }
+        fn u4(out: &mut Vec<u8>, value: u32) { out.extend(value.to_be_bytes()); }
+        fn utf8(out: &mut Vec<u8>, value: &str) {
+            out.push(1);
+            u2(out, value.len() as u16);
+            out.extend(value.as_bytes());
+        }
+
+        // Java 21 class ExampleMod: public ExampleMod() { super(); }
+        // public void onInitialize() { }.
+        let mut class = Vec::new();
+        u4(&mut class, 0xcafebabe);
+        u2(&mut class, 0);
+        u2(&mut class, 65);
+        u2(&mut class, 21);
+        utf8(&mut class, "example/ExampleMod"); // #1
+        class.push(7); u2(&mut class, 1);       // #2 Class
+        utf8(&mut class, "java/lang/Object");   // #3
+        class.push(7); u2(&mut class, 3);       // #4 Class
+        utf8(&mut class, "<init>");             // #5
+        utf8(&mut class, "()V");                // #6
+        class.push(12); u2(&mut class, 5); u2(&mut class, 6); // #7 NameAndType
+        class.push(10); u2(&mut class, 4); u2(&mut class, 7); // #8 Methodref
+        utf8(&mut class, "Code");               // #9
+        utf8(&mut class, "onInitialize");       // #10
+        utf8(&mut class, "pomme/api/Pomme");     // #11
+        class.push(7); u2(&mut class, 11);       // #12 Class
+        utf8(&mut class, "log");                 // #13
+        utf8(&mut class, "(Ljava/lang/String;)V"); // #14
+        class.push(12); u2(&mut class, 13); u2(&mut class, 14); // #15 NameAndType
+        class.push(10); u2(&mut class, 12); u2(&mut class, 15); // #16 Methodref
+        utf8(&mut class, "Hello from Java");     // #17
+        class.push(8); u2(&mut class, 17);       // #18 String
+        utf8(&mut class, "net/fabricmc/api/ModInitializer"); // #19
+        class.push(7); u2(&mut class, 19);       // #20 Class
+
+        u2(&mut class, 0x0021); // public super
+        u2(&mut class, 2);     // this
+        u2(&mut class, 4);     // super
+        u2(&mut class, 1);     // interfaces
+        u2(&mut class, 20);    // ModInitializer
+        u2(&mut class, 0);     // fields
+        u2(&mut class, 2);     // methods
+
+        // Public no-arg constructor: aload_0; invokespecial Object.<init>; return.
+        u2(&mut class, 0x0001); u2(&mut class, 5); u2(&mut class, 6); u2(&mut class, 1);
+        u2(&mut class, 9); u4(&mut class, 17);
+        u2(&mut class, 1); u2(&mut class, 1); u4(&mut class, 5);
+        class.extend([0x2a, 0xb7, 0x00, 0x08, 0xb1]);
+        u2(&mut class, 0); u2(&mut class, 0);
+
+        // Public instance initializer: ldc "Hello from Java"; invokestatic Pomme.log; return.
+        u2(&mut class, 0x0001); u2(&mut class, 10); u2(&mut class, 6); u2(&mut class, 1);
+        u2(&mut class, 9); u4(&mut class, 18);
+        u2(&mut class, 1); u2(&mut class, 1); u4(&mut class, 6);
+        class.extend([0x12, 0x12, 0xb8, 0x00, 0x10, 0xb1]);
+        u2(&mut class, 0); u2(&mut class, 0);
+        u2(&mut class, 0); // class attributes
+
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        writer.start_file("fabric.mod.json", SimpleFileOptions::default()).unwrap();
+        writer.write_all(br#"{"schemaVersion":1,"id":"tiny_example","version":"1.0.0","entrypoints":{"main":["example.ExampleMod"]}}"#).unwrap();
+        writer.start_file("example/ExampleMod.class", SimpleFileOptions::default()).unwrap();
+        writer.write_all(&class).unwrap();
+        writer.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn loads_a_fabric_jar_and_executes_a_java_on_initialize_method() {
+        let jar = tiny_fabric_mod_jar();
+        let report = run_fabric_mod_jar(&jar, 100).unwrap();
+        assert_eq!(report.mod_id, "tiny_example");
+        assert_eq!(report.initialized_classes, ["example.ExampleMod"]);
+        assert_eq!(report.instructions_executed, 3);
+        assert_eq!(report.logs, ["Hello from Java"]);
+    }
+
+    #[test]
+    fn enforces_fuel_for_fabric_entrypoints() {
+        let jar = tiny_fabric_mod_jar();
+        assert!(matches!(
+            run_fabric_mod_jar(&jar, 0),
+            Err(ModExecutionError::Vm(VmError::FuelExhausted))
+        ));
+    }
+
+    #[test]
+    fn executes_integer_arithmetic_and_return() {
+        // (6 * 7) - 2
+        let code = [0x10, 0x06, 0x10, 0x07, 0x68, 0x05, 0x64, 0xac];
+        assert_eq!(Vm::default().execute_static_int(&code, &[]), Ok(40));
+    }
+
+    #[test]
+    fn executes_locals_and_iinc() {
+        // local[0] += 5; return local[0]
+        let code = [0x84, 0x00, 0x05, 0x1a, 0xac];
+        assert_eq!(Vm::default().execute_static_int(&code, &[37]), Ok(42));
+    }
+
+    #[test]
+    fn executes_conditional_branch() {
+        // iconst_0; ifeq +5; iconst_1; ireturn; bipush 42; ireturn
+        let code = [0x03, 0x99, 0x00, 0x05, 0x04, 0xac, 0x10, 0x2a, 0xac];
+        assert_eq!(Vm::default().execute_static_int(&code, &[]), Ok(42));
+    }
+
+    #[test]
+    fn division_by_zero_is_reported() {
+        assert_eq!(Vm::default().execute_static_int(&[0x04, 0x03, 0x6c, 0xac], &[]), Err(VmError::DivisionByZero));
+    }
+
+    #[test]
+    fn fuel_bounds_infinite_loops() {
+        let vm = Vm::new(ExecutionLimits { fuel: 4, ..ExecutionLimits::default() });
+        assert_eq!(vm.execute(&[0xa7, 0x00, 0x00], &[]), Err(VmError::FuelExhausted));
+    }
+
+    #[test]
+    fn rejects_unknown_opcodes() {
+        assert!(matches!(Vm::default().execute(&[0x00], &[]), Err(VmError::UnsupportedOpcode(0x00, 0))));
+    }
+}
+)
+            });
+        if !valid_name {
+            return Err(ModExecutionError::InvalidEntrypoint);
+        }
         let path = format!("{}.class", class_name.replace('.', "/"));
         let class_bytes = {
-            let mut file = archive.by_name(&path)
+            let file = archive.by_name(&path)
                 .map_err(|_| ModExecutionError::MissingClass(class_name.to_owned()))?;
-            if file.size() > 32 * 1024 * 1024 {
+            let mut raw = Vec::new();
+            file.take(32 * 1024 * 1024 + 1).read_to_end(&mut raw)?;
+            if raw.len() > 32 * 1024 * 1024 {
                 return Err(ModExecutionError::InvalidMetadata);
             }
-            let mut raw = Vec::with_capacity(file.size() as usize);
-            file.read_to_end(&mut raw)?;
             raw
         };
         let (executed, mut class_logs) =
