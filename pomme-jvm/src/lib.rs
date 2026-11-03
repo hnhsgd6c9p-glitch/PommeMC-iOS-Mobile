@@ -202,6 +202,7 @@ pub struct ModRunReport {
     pub instructions_executed: u64,
     /// Messages emitted through the Pomme Java bridge during initialization.
     pub logs: Vec<String>,
+}
 
 /// Errors raised while loading or executing the first supported Java-mod tier.
 #[derive(Debug, Error)]
