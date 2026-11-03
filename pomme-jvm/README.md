@@ -15,48 +15,38 @@ cargo build -p pomme-jvm
 
 ## First supported Java mod
 
-The current Fabric-JAR adapter supports a narrow proof-of-execution target:
+The repo includes a small Java example that proves the full JAR-to-entrypoint
+path and calls a native Pomme API bridge:
+
+```sh
+cd pomme-jvm/examples/tiny-fabric-mod
+./build.sh
+cd ../../../
+cargo run -p pomme-jvm -- pomme-jvm/examples/tiny-fabric-mod/build/tiny-example.jar
+```
+
+Expected output includes:
+
+```text
+Loaded Java Fabric mod: tiny_example
+  initialized example.ExampleMod
+[Java mod] Hello from a Java Fabric-style mod!
+Executed 3 JVM instruction(s).
+```
+
+The Java source calls `pomme.api.Pomme.log(String)`. The tiny Pomme API stub
+is used only at compile time; it is not packaged in the JAR. The Rust runtime
+resolves that method reference and handles the call through its native bridge.
+
+The supported Java class shape is intentionally narrow:
 
 - A valid `fabric.mod.json` with a `main` entrypoint class.
 - Java class-file versions 45 through 65 (Java 21).
 - No instance fields or static class initializer.
 - A public no-argument constructor whose bytecode only calls
   `java.lang.Object.<init>()`.
-- A public instance `onInitialize()V` method whose body is exactly `return`.
-
-Example Java source:
-
-```java
-package example;
-
-public final class ExampleMod {
-    public ExampleMod() {}
-
-    public void onInitialize() {}
-}
-```
-
-Build a test JAR with a JDK 21:
-
-```sh
-mkdir -p build/classes
-javac --release 21 -d build/classes src/example/ExampleMod.java
-cat > build/classes/fabric.mod.json <<'JSON'
-{
-  "schemaVersion": 1,
-  "id": "tiny_example",
-  "version": "1.0.0",
-  "entrypoints": {
-    "main": ["example.ExampleMod"]
-  }
-}
-JSON
-jar --create --file tiny-example.jar -C build/classes .
-cargo run -p pomme-jvm -- tiny-example.jar
-```
-
-A successful run reports the mod id, initialized class, and executed JVM
-instruction count.
+- A public instance `onInitialize()V` method containing string constants,
+  calls to `pomme.api.Pomme.log(String)`, and a final `return`.
 
 ## Current limitations
 
