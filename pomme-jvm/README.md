@@ -20,7 +20,7 @@ path and calls a native Pomme API bridge:
 
 ```sh
 cd pomme-jvm/examples/tiny-fabric-mod
-./build.sh
+sh build.sh
 cd ../../../
 cargo run -p pomme-jvm -- pomme-jvm/examples/tiny-fabric-mod/build/tiny-example.jar
 ```
