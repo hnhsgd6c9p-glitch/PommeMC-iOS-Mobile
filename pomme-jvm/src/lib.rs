@@ -441,7 +441,7 @@ mod tests {
         u4(&mut class, 0xcafebabe);
         u2(&mut class, 0);
         u2(&mut class, 65);
-        u2(&mut class, 11);
+        u2(&mut class, 19);
         utf8(&mut class, "example/ExampleMod"); // #1
         class.push(7); u2(&mut class, 1);       // #2 Class
         utf8(&mut class, "java/lang/Object");   // #3
@@ -452,6 +452,14 @@ mod tests {
         class.push(10); u2(&mut class, 4); u2(&mut class, 7); // #8 Methodref
         utf8(&mut class, "Code");               // #9
         utf8(&mut class, "onInitialize");       // #10
+        utf8(&mut class, "pomme/api/Pomme");     // #11
+        class.push(7); u2(&mut class, 11);       // #12 Class
+        utf8(&mut class, "log");                 // #13
+        utf8(&mut class, "(Ljava/lang/String;)V"); // #14
+        class.push(12); u2(&mut class, 13); u2(&mut class, 14); // #15 NameAndType
+        class.push(10); u2(&mut class, 12); u2(&mut class, 15); // #16 Methodref
+        utf8(&mut class, "Hello from Java");     // #17
+        class.push(8); u2(&mut class, 17);       // #18 String
 
         u2(&mut class, 0x0021); // public super
         u2(&mut class, 2);     // this
@@ -467,11 +475,11 @@ mod tests {
         class.extend([0x2a, 0xb7, 0x00, 0x08, 0xb1]);
         u2(&mut class, 0); u2(&mut class, 0);
 
-        // Public instance initializer with a single JVM return instruction.
+        // Public instance initializer: ldc "Hello from Java"; invokestatic Pomme.log; return.
         u2(&mut class, 0x0001); u2(&mut class, 10); u2(&mut class, 6); u2(&mut class, 1);
-        u2(&mut class, 9); u4(&mut class, 13);
-        u2(&mut class, 0); u2(&mut class, 1); u4(&mut class, 1);
-        class.push(0xb1);
+        u2(&mut class, 9); u4(&mut class, 18);
+        u2(&mut class, 1); u2(&mut class, 1); u4(&mut class, 6);
+        class.extend([0x12, 0x12, 0xb8, 0x00, 0x10, 0xb1]);
         u2(&mut class, 0); u2(&mut class, 0);
         u2(&mut class, 0); // class attributes
 
@@ -489,7 +497,8 @@ mod tests {
         let report = run_fabric_mod_jar(&jar, 100).unwrap();
         assert_eq!(report.mod_id, "tiny_example");
         assert_eq!(report.initialized_classes, ["example.ExampleMod"]);
-        assert_eq!(report.instructions_executed, 1);
+        assert_eq!(report.instructions_executed, 3);
+        assert_eq!(report.logs, ["Hello from Java"]);
     }
 
     #[test]
