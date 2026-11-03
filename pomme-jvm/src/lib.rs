@@ -100,8 +100,8 @@ impl Vm {
                     if op == 0x15 { push(&mut stack, locals[index], self.limits.max_stack)?; }
                     else { locals[index] = pop(&mut stack)?; }
                 }
-                0x1a..=0x1d => push(&mut stack, locals[(op - 0x1a) as usize], self.limits.max_stack)?,
-                0x3b..=0x3e => locals[(op - 0x3b) as usize] = pop(&mut stack)?,
+                0x1a..=0x1d => {\n                    let index = (op - 0x1a) as usize;\n                    check_local(index, self.limits.max_locals)?;\n                    push(&mut stack, locals[index], self.limits.max_stack)?;\n                }
+                0x3b..=0x3e => {\n                    let index = (op - 0x3b) as usize;\n                    check_local(index, self.limits.max_locals)?;\n                    locals[index] = pop(&mut stack)?;\n                }
                 0x57 => { pop(&mut stack)?; }
                 0x59 => {
                     let value = *stack.last().ok_or(VmError::StackUnderflow)?;
