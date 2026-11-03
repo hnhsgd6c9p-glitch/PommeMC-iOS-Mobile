@@ -55,8 +55,10 @@ ordinary third-party Fabric mods. It does not currently implement the Java
 object heap, general constructor execution, field access, Java method calls,
 exceptions, class initialization, class-loader delegation, Mixin, access
 wideners, Fabric API, threads, garbage collection, or the Java standard
-library. The narrow adapter validates a trivial constructor and executes the
-empty instance initializer; it does not pretend that unsupported bytecode ran.
+library. The narrow adapter validates a trivial constructor and executes only a small
+instruction subset. It supports string constants and one native bridge call,
+`pomme.api.Pomme.log(String)`; unsupported bytecode is rejected rather than
+silently skipped.
 
 The next steps are a typed operand stack and object references, constructor
 and method invocation, fields, exception tables, class loading/linking, and
