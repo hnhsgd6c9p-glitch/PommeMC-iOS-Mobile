@@ -61,6 +61,10 @@ The `pomme-mod` crate currently:
 - parses Java class-file constant pools and method Code attributes, walks
   bytecode instruction boundaries, resolves invocation references, and
   aggregates per-JAR opcode/API compatibility inventories.
+- inventories field references, `invokedynamic` call sites, method-handle and
+  method-type constants, dynamic constants, and class `BootstrapMethods`
+  entries. These structures are explicit hard-Java signals, not proof that a
+  lambda or Java bootstrap can run in Pomme.
 
 The restricted integer interpreter executes only a narrow subset of Java
 bytecode. It does **not** implement a JVM, Fabric Loader, object semantics,
@@ -129,8 +133,14 @@ set is intentionally aligned with the restricted interpreter.
 
 A `pomme-mod-inspect` command-line tool also prints a JAR's Fabric metadata,
 class-file versions, bytecode opcode frequencies, API references, and detected
-high-risk features. It is a triage tool for choosing realistic first porting
-targets, not a mod loader.
+high-risk features, including counts for dynamic-linkage structures. It is a
+triage tool for choosing realistic first porting targets, not a mod loader.
+
+The test suite includes Java sources compiled with `javac --release 8`: a
+pure-integer interface whose helper methods exercise the restricted interpreter,
+and a lambda fixture that exercises `invokedynamic`, method handles, and the
+`BootstrapMethods` class attribute. The compatibility CI installs Temurin 21
+before running those tests.
 
 Next, use real, permissively licensed Fabric mods as fixtures, expand the
 interpreter to common compiler output (including constants, arrays, objects,

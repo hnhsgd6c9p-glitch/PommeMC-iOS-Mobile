@@ -82,6 +82,12 @@ pub struct ClassAnalysis {
     pub referenced_classes: BTreeSet<String>,
     pub invoked_methods: BTreeSet<String>,
     pub field_references: BTreeSet<String>,
+    pub invokedynamic_sites: usize,
+    pub method_handle_constants: usize,
+    pub method_type_constants: usize,
+    pub dynamic_constants: usize,
+    pub invokedynamic_constants: usize,
+    pub bootstrap_methods: usize,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -93,6 +99,12 @@ pub struct JarCompatibilityReport {
     pub referenced_classes: BTreeSet<String>,
     pub invoked_methods: BTreeSet<String>,
     pub field_references: BTreeSet<String>,
+    pub invokedynamic_sites: usize,
+    pub method_handle_constants: usize,
+    pub method_type_constants: usize,
+    pub dynamic_constants: usize,
+    pub invokedynamic_constants: usize,
+    pub bootstrap_methods: usize,
     pub feature_flags: BTreeSet<String>,
     pub unsupported_or_high_risk_apis: BTreeSet<String>,
 }
@@ -108,6 +120,21 @@ enum CpEntry {
         name_type: u16,
         interface: bool,
         field: bool,
+    },
+    MethodHandle {
+        reference_kind: u8,
+        reference_index: u16,
+    },
+    MethodType {
+        descriptor_index: u16,
+    },
+    Dynamic {
+        bootstrap_index: u16,
+        name_type: u16,
+    },
+    InvokeDynamic {
+        bootstrap_index: u16,
+        name_type: u16,
     },
     Other,
 }
@@ -187,18 +214,25 @@ pub fn analyze_class(bytes: &[u8]) -> Result<ClassAnalysis, ClassFileError> {
                 i += 1;
                 continue;
             }
-            8 | 16 | 19 | 20 => {
+            8 | 19 | 20 => {
                 r.skip(2)?;
                 CpEntry::Other
             }
-            15 => {
-                r.skip(3)?;
-                CpEntry::Other
-            }
-            17 | 18 => {
-                r.skip(4)?;
-                CpEntry::Other
-            }
+            15 => CpEntry::MethodHandle {
+                reference_kind: r.u1()?,
+                reference_index: r.u2()?,
+            },
+            16 => CpEntry::MethodType {
+                descriptor_index: r.u2()?,
+            },
+            17 => CpEntry::Dynamic {
+                bootstrap_index: r.u2()?,
+                name_type: r.u2()?,
+            },
+            18 => CpEntry::InvokeDynamic {
+                bootstrap_index: r.u2()?,
+                name_type: r.u2()?,
+            },
             other => return Err(ClassFileError::UnknownConstantTag(other)),
         };
         cp.push(entry);
@@ -312,7 +346,71 @@ pub fn analyze_class(bytes: &[u8]) -> Result<ClassAnalysis, ClassFileError> {
             field_accesses: method_field_accesses,
         });
     }
-    skip_attributes(&mut r, &cp, &mut annotations)?;
+    let bootstrap_methods = parse_class_attributes(&mut r, &cp, &mut annotations)?;
+    let mut method_handle_constants = 0;
+    let mut method_type_constants = 0;
+    let mut dynamic_constants = 0;
+    let mut invokedynamic_constants = 0;
+    for (index, entry) in cp.iter().enumerate() {
+        match entry {
+            CpEntry::MethodHandle {
+                reference_kind,
+                reference_index,
+            } => {
+                let reference = cp.get(*reference_index as usize);
+                let valid_reference = match reference_kind {
+                    1..=4 => matches!(reference, Some(CpEntry::Ref { field: true, .. })),
+                    5 | 8 => matches!(
+                        reference,
+                        Some(CpEntry::Ref {
+                            field: false,
+                            interface: false,
+                            ..
+                        })
+                    ),
+                    6 | 7 => matches!(reference, Some(CpEntry::Ref { field: false, .. })),
+                    9 => matches!(
+                        reference,
+                        Some(CpEntry::Ref {
+                            field: false,
+                            interface: true,
+                            ..
+                        })
+                    ),
+                    _ => false,
+                };
+                if !valid_reference {
+                    return Err(ClassFileError::BadConstant(index as u16));
+                }
+                method_handle_constants += 1;
+            }
+            CpEntry::MethodType { descriptor_index } => {
+                let _ = utf8(&cp, *descriptor_index)?;
+                method_type_constants += 1;
+            }
+            CpEntry::Dynamic {
+                bootstrap_index,
+                name_type,
+            } => {
+                let _ = name_and_type(&cp, *name_type)?;
+                if *bootstrap_index as usize >= bootstrap_methods {
+                    return Err(ClassFileError::BadConstant(index as u16));
+                }
+                dynamic_constants += 1;
+            }
+            CpEntry::InvokeDynamic {
+                bootstrap_index,
+                name_type,
+            } => {
+                let _ = name_and_type(&cp, *name_type)?;
+                if *bootstrap_index as usize >= bootstrap_methods {
+                    return Err(ClassFileError::BadConstant(index as u16));
+                }
+                invokedynamic_constants += 1;
+            }
+            _ => {}
+        }
+    }
     // Class references are collected from constant-pool Class entries and method
     // owners.
     for (index, entry) in cp.iter().enumerate() {
@@ -327,6 +425,7 @@ pub fn analyze_class(bytes: &[u8]) -> Result<ClassAnalysis, ClassFileError> {
             referenced_classes.insert(call.owner.clone());
         }
     }
+    let invokedynamic_sites = opcode_counts.get("invokedynamic").copied().unwrap_or(0);
     Ok(ClassAnalysis {
         minor_version,
         major_version,
@@ -344,6 +443,12 @@ pub fn analyze_class(bytes: &[u8]) -> Result<ClassAnalysis, ClassFileError> {
         referenced_classes,
         invoked_methods,
         field_references,
+        invokedynamic_sites,
+        method_handle_constants,
+        method_type_constants,
+        dynamic_constants,
+        invokedynamic_constants,
+        bootstrap_methods,
     })
 }
 
@@ -367,6 +472,32 @@ where
                 report.referenced_classes.extend(class.referenced_classes);
                 report.invoked_methods.extend(class.invoked_methods);
                 report.field_references.extend(class.field_references);
+                report.invokedynamic_sites += class.invokedynamic_sites;
+                report.method_handle_constants += class.method_handle_constants;
+                report.method_type_constants += class.method_type_constants;
+                report.dynamic_constants += class.dynamic_constants;
+                report.invokedynamic_constants += class.invokedynamic_constants;
+                report.bootstrap_methods += class.bootstrap_methods;
+                if class.invokedynamic_sites > 0 {
+                    report.feature_flags.insert("invokedynamic".into());
+                }
+                if class.method_handle_constants > 0 {
+                    report.feature_flags.insert("method_handles".into());
+                }
+                if class.method_type_constants > 0 {
+                    report.feature_flags.insert("method_types".into());
+                }
+                if class.dynamic_constants > 0 {
+                    report.feature_flags.insert("dynamic_constants".into());
+                }
+                if class.invokedynamic_constants > 0 {
+                    report
+                        .feature_flags
+                        .insert("invokedynamic_constants".into());
+                }
+                if class.bootstrap_methods > 0 {
+                    report.feature_flags.insert("bootstrap_methods".into());
+                }
                 if class.has_static_initializer {
                     report.feature_flags.insert("static_initializers".into());
                 }
@@ -484,6 +615,54 @@ fn skip_member(r: &mut Reader<'_>) -> Result<(), ClassFileError> {
     }
     Ok(())
 }
+fn parse_class_attributes(
+    r: &mut Reader<'_>,
+    cp: &[CpEntry],
+    annotations: &mut usize,
+) -> Result<usize, ClassFileError> {
+    let count = bounded(r.u2()? as usize)?;
+    let mut bootstrap_methods = None;
+    for _ in 0..count {
+        let name = utf8(cp, r.u2()?)?;
+        let len = bounded(r.u4()? as usize)?;
+        let data = r.take(len)?;
+        if name == "BootstrapMethods" {
+            if bootstrap_methods.is_some() {
+                return Err(ClassFileError::InvalidBytecode);
+            }
+            bootstrap_methods = Some(parse_bootstrap_methods(data, cp)?);
+        } else {
+            count_annotation_attribute(&name, data, cp, annotations)?;
+        }
+    }
+    Ok(bootstrap_methods.unwrap_or(0))
+}
+
+fn parse_bootstrap_methods(data: &[u8], cp: &[CpEntry]) -> Result<usize, ClassFileError> {
+    let mut r = Reader::new(data);
+    let count = bounded(r.u2()? as usize)?;
+    for _ in 0..count {
+        let method_ref = r.u2()?;
+        if !matches!(
+            cp.get(method_ref as usize),
+            Some(CpEntry::MethodHandle { .. })
+        ) {
+            return Err(ClassFileError::BadConstant(method_ref));
+        }
+        let argument_count = bounded(r.u2()? as usize)?;
+        for _ in 0..argument_count {
+            let argument = r.u2()?;
+            if matches!(cp.get(argument as usize), None | Some(CpEntry::Empty)) {
+                return Err(ClassFileError::BadConstant(argument));
+            }
+        }
+    }
+    if r.remaining() != 0 {
+        return Err(ClassFileError::InvalidBytecode);
+    }
+    Ok(count)
+}
+
 fn skip_attributes(
     r: &mut Reader<'_>,
     _cp: &[CpEntry],
@@ -548,7 +727,15 @@ fn decode_bytecode(code: &[u8], cp: &[CpEntry]) -> Result<DecodedBytecode, Class
                 pc += 4;
                 calls.push(method_ref(cp, index)?);
             }
-            0xba => pc += 4,
+            0xba => {
+                let index = read_u16(code, pc)?;
+                if !matches!(cp.get(index as usize), Some(CpEntry::InvokeDynamic { .. }))
+                    || code.get(pc + 2..pc + 4) != Some(&[0, 0])
+                {
+                    return Err(ClassFileError::BadConstant(index));
+                }
+                pc += 4;
+            }
             0xc5 => pc += 3,
             0xc8 | 0xc9 => pc += 4,
             0xaa => {
@@ -988,6 +1175,97 @@ pub(crate) mod tests {
             jar.field_references
                 .contains("sample/State.count:I [getstatic]")
         );
+    }
+
+    #[test]
+    fn inventories_invokedynamic_and_bootstrap_constants() {
+        fn u2(out: &mut Vec<u8>, value: u16) {
+            out.extend(value.to_be_bytes());
+        }
+        fn u4(out: &mut Vec<u8>, value: u32) {
+            out.extend(value.to_be_bytes());
+        }
+        fn utf8(out: &mut Vec<u8>, value: &str) {
+            out.push(1);
+            u2(out, value.len() as u16);
+            out.extend(value.as_bytes());
+        }
+
+        let mut b = Vec::new();
+        u4(&mut b, 0xcafebabe);
+        u2(&mut b, 0);
+        u2(&mut b, 52);
+        u2(&mut b, 18); // constant-pool count
+        utf8(&mut b, "Example"); // #1
+        b.push(7);
+        u2(&mut b, 1); // #2 Class Example
+        utf8(&mut b, "java/lang/Object"); // #3
+        b.push(7);
+        u2(&mut b, 3); // #4 Class Object
+        utf8(&mut b, "Code"); // #5
+        utf8(&mut b, "run"); // #6
+        utf8(&mut b, "()V"); // #7
+        utf8(&mut b, "BootstrapMethods"); // #8
+        utf8(&mut b, "bootstrap"); // #9
+        utf8(&mut b, "()V"); // #10
+        b.push(12);
+        u2(&mut b, 9);
+        u2(&mut b, 10); // #11 NameAndType
+        b.push(10);
+        u2(&mut b, 2);
+        u2(&mut b, 11); // #12 Methodref
+        b.push(15);
+        b.push(6);
+        u2(&mut b, 12); // #13 REF_invokeStatic MethodHandle
+        utf8(&mut b, "runDynamic"); // #14
+        utf8(&mut b, "()Ljava/lang/Runnable;"); // #15
+        b.push(12);
+        u2(&mut b, 14);
+        u2(&mut b, 15); // #16 NameAndType
+        b.push(18);
+        u2(&mut b, 0);
+        u2(&mut b, 16); // #17 InvokeDynamic
+
+        u2(&mut b, 0x0021); // public super
+        u2(&mut b, 2);
+        u2(&mut b, 4);
+        u2(&mut b, 0); // interfaces
+        u2(&mut b, 0); // fields
+        u2(&mut b, 1); // methods
+        u2(&mut b, 0x0009); // public static
+        u2(&mut b, 6);
+        u2(&mut b, 7);
+        u2(&mut b, 1); // method attributes
+        u2(&mut b, 5); // Code
+        u4(&mut b, 19); // Code attribute length
+        u2(&mut b, 1); // max_stack
+        u2(&mut b, 0); // max_locals
+        u4(&mut b, 7); // code length
+        b.extend([0xba, 0, 17, 0, 0, 0x57, 0xb1]);
+        u2(&mut b, 0); // exception table
+        u2(&mut b, 0); // nested attributes
+        u2(&mut b, 1); // class attributes
+        u2(&mut b, 8); // BootstrapMethods
+        u4(&mut b, 6);
+        u2(&mut b, 1); // bootstrap method count
+        u2(&mut b, 13); // method handle #13
+        u2(&mut b, 0); // no bootstrap arguments
+
+        let class = analyze_class(&b).unwrap();
+        assert_eq!(class.invokedynamic_sites, 1);
+        assert_eq!(class.invokedynamic_constants, 1);
+        assert_eq!(class.method_handle_constants, 1);
+        assert_eq!(class.bootstrap_methods, 1);
+
+        let jar = analyze_jar_classes([("Example.class", b)]);
+        for feature in [
+            "invokedynamic",
+            "invokedynamic_constants",
+            "method_handles",
+            "bootstrap_methods",
+        ] {
+            assert!(jar.feature_flags.contains(feature), "missing {feature}");
+        }
     }
 
     #[test]

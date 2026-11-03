@@ -34,6 +34,8 @@ use crate::ui::text_edit::{SystemClipboard, TextFieldState, TextInputEvent};
 struct Settings {
     #[serde(default)]
     key_bindings: KeyBindings,
+    #[serde(default = "default_pomme_version")]
+    pomme_version: String,
     gui_scale: u32,
     render_distance: u32,
     // Renamed when the default became Off, so saves holding the old default
@@ -213,7 +215,29 @@ fn default_japanese_glyph_variants() -> bool {
 }
 
 fn default_chunk_detail() -> u32 {
-    CHUNK_DETAIL_OFF
+    if cfg!(target_os = "ios") {
+        16
+    } else {
+        CHUNK_DETAIL_OFF
+    }
+}
+
+fn default_render_distance() -> u32 {
+    if cfg!(target_os = "ios") {
+        16
+    } else {
+        12
+    }
+}
+
+fn default_pomme_version() -> String {
+    pomme_protocol::version::VERSIONS
+        .iter()
+        .find(|version| crate::net::translate::joinable(version.protocol))
+        .map_or(pomme_protocol::version::NATIVE.name, |version| {
+            version.name
+        })
+        .to_owned()
 }
 
 fn default_volume() -> f32 {
@@ -224,9 +248,10 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             key_bindings: KeyBindings::default(),
+            pomme_version: default_pomme_version(),
             gui_scale: 0,
-            render_distance: 12,
-            chunk_detail: CHUNK_DETAIL_OFF,
+            render_distance: default_render_distance(),
+            chunk_detail: default_chunk_detail(),
             simulation_distance: 12,
             fov: 70,
             fov_effect_scale: 1.0,
@@ -282,6 +307,15 @@ impl Default for Settings {
 /// window would.
 pub(crate) fn saved_chunk_detail(game_dir: &Path) -> u32 {
     load_settings(game_dir).chunk_detail
+}
+
+/// The profile's next-launch Pomme version, if it names a translated
+/// protocol. Command-line `--version` takes precedence over this setting.
+pub(crate) fn saved_pomme_version(game_dir: &Path) -> Option<String> {
+    let version = load_settings(game_dir).pomme_version;
+    pomme_protocol::ProtocolVersion::from_name(&version)
+        .filter(|version| crate::net::translate::joinable(version.protocol))
+        .map(|version| version.name.to_owned())
 }
 
 fn load_settings(game_dir: &Path) -> Settings {
@@ -648,6 +682,7 @@ pub struct MainMenu {
     action_binding: Option<Action>,
     username: String,
     version: String,
+    pomme_version: String,
     screen: Screen,
     server_list: ServerList,
     selected_server: Option<usize>,
@@ -837,6 +872,7 @@ impl MainMenu {
         let mut menu = Self {
             action_binding: None,
             username,
+            pomme_version: version.clone(),
             version,
             screen: Screen::Main,
             server_list,
@@ -892,7 +928,9 @@ impl MainMenu {
             credits_keys: 0,
             last_click_index: None,
             gui_scale_setting: settings.gui_scale,
-            render_distance: settings.render_distance.clamp(2, 80),
+            render_distance: settings
+                .render_distance
+                .clamp(2, crate::world::chunk::MAX_CLIENT_VIEW_DISTANCE),
             chunk_detail: settings.chunk_detail,
             simulation_distance: settings.simulation_distance,
             server_render_distance: 0,
@@ -1144,6 +1182,7 @@ impl MainMenu {
             &self.settings_dir,
             &Settings {
                 key_bindings: key_bindings.clone(),
+                pomme_version: self.pomme_version.clone(),
                 gui_scale: self.gui_scale_setting,
                 render_distance: self
                     .bench_render_distance

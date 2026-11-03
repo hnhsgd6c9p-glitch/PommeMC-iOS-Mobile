@@ -3935,9 +3935,10 @@ fn server_view_distance_update(announced: u32, last_request: u32) -> Option<u32>
     (announced != last_request).then_some(announced)
 }
 
-/// LOD level for a column: full detail within `detail` chunks (the Chunk
-/// Detail setting), half resolution to twice that, quarter beyond. Off keeps
-/// every column at full detail.
+/// LOD level for a column: full detail within `detail` chunks, then each
+/// doubled distance band drops one resolution level. LOD 4 is the coarsest
+/// because its 16-block sampling still fits inside a chunk. Off keeps every
+/// column at full detail.
 pub(crate) fn chunk_lod(
     pos: crate::position::ChunkPos,
     player: crate::position::ChunkPos,
@@ -3950,12 +3951,15 @@ pub(crate) fn chunk_lod(
     let dz = (pos.z - player.z).unsigned_abs();
     let dist = dx.max(dz);
     if dist <= detail {
-        0
-    } else if dist <= detail * 2 {
-        1
-    } else {
-        2
+        return 0;
     }
+    let mut level = 1;
+    let mut outer = detail.saturating_mul(2);
+    while dist > outer && level < 4 {
+        outer = outer.saturating_mul(2);
+        level += 1;
+    }
+    level
 }
 
 /// The [`Worn`](crate::player::interaction::Worn) for `stack`, if it's a
@@ -4456,7 +4460,7 @@ mod tests {
         use crate::position::ChunkPos;
         let player = ChunkPos::new(0, 0);
         let far = ChunkPos::new(100, -100);
-        assert_eq!(super::chunk_lod(far, player, 8), 2);
+        assert_eq!(super::chunk_lod(far, player, 8), 4);
         assert_eq!(
             super::chunk_lod(far, player, crate::ui::menu::CHUNK_DETAIL_OFF),
             0

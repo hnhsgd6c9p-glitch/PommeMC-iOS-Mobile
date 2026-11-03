@@ -52,6 +52,9 @@ pub struct ParticlePipeline {
     /// The shared [`Lightmap`]'s group, set 2.
     lightmap_set: rhi::backend::BindGroup,
     vertex_buffers: Vec<rhi::backend::Buffer>,
+    /// CPU-side billboard scratch space, reused each frame to avoid a large
+    /// transient allocation during particle-heavy scenes on mobile.
+    vertices: Vec<ParticleVertex>,
 }
 
 impl ParticlePipeline {
@@ -101,6 +104,7 @@ impl ParticlePipeline {
             camera_buffers,
             lightmap_set: lightmap.group,
             vertex_buffers,
+            vertices: Vec::with_capacity(MAX_VERTS),
         };
         this.rebind_atlas(device, atlas);
         this
@@ -131,8 +135,7 @@ impl ParticlePipeline {
         }
 
         let (right, up) = camera.billboard_axes();
-        let mut verts: Vec<ParticleVertex> =
-            Vec::with_capacity(quads.len().min(MAX_PARTICLE_QUADS) * 6);
+        self.vertices.clear();
         // Opaque quads first, then translucent, so each layer is one
         // contiguous draw range (vanilla renders the layers separately).
         let emit = |verts: &mut Vec<ParticleVertex>, translucent: bool| {
@@ -159,17 +162,17 @@ impl ParticlePipeline {
                 }
             }
         };
-        emit(&mut verts, false);
-        let opaque_verts = verts.len();
-        emit(&mut verts, true);
+        emit(&mut self.vertices, false);
+        let opaque_verts = self.vertices.len();
+        emit(&mut self.vertices, true);
 
-        let bytes = bytemuck::cast_slice::<ParticleVertex, u8>(&verts);
+        let bytes = bytemuck::cast_slice::<ParticleVertex, u8>(&self.vertices);
         self.vertex_buffers[frame].write(bytes);
 
         pass.set_vertex_buffer(0, self.vertex_buffers[frame].handle());
         for (pipeline, range) in [
             (self.pipeline, 0..opaque_verts),
-            (self.translucent_pipeline, opaque_verts..verts.len()),
+            (self.translucent_pipeline, opaque_verts..self.vertices.len()),
         ] {
             if range.is_empty() {
                 continue;

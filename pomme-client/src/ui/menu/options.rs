@@ -39,6 +39,18 @@ fn compat_label(compat: PackCompat) -> (&'static str, [f32; 4]) {
     }
 }
 
+fn next_pomme_version(current: &str) -> String {
+    let versions: Vec<_> = pomme_protocol::version::VERSIONS
+        .iter()
+        .filter(|version| crate::net::translate::joinable(version.protocol))
+        .collect();
+    let next = versions
+        .iter()
+        .position(|version| version.name == current)
+        .map_or(0, |index| (index + 1) % versions.len());
+    versions[next].name.to_owned()
+}
+
 // Chat option label prefixes, shared by the labels and their handlers.
 const CHAT_VISIBILITY: &str = "Chat:";
 const CHAT_COLORS: &str = "Colors:";
@@ -149,6 +161,11 @@ impl MainMenu {
         } else {
             format!("FOV: {}", self.fov)
         };
+        let pomme_version_label = if self.pomme_version == self.version {
+            format!("Pomme Version: {} (applied)", self.pomme_version)
+        } else {
+            format!("Pomme Version: {} (restart to apply)", self.pomme_version)
+        };
         // FOV slider + Online lead the grid, above the categories (vanilla header
         // sub-row).
         let rows: Vec<OptRow> = vec![
@@ -158,6 +175,7 @@ impl MainMenu {
             OptRow::Pair("Language...", "Chat Settings..."),
             OptRow::Pair("Resource Packs...", "Accessibility Settings..."),
             OptRow::Pair("Telemetry Data...", "Credits & Attribution..."),
+            OptRow::Big(&pomme_version_label),
         ];
 
         let nav: &[(&str, Screen)] = &[
@@ -242,14 +260,14 @@ impl MainMenu {
             .map_or(gs / (w - 8.0 * gs), |span| 1.0 / span)
     }
 
-    /// Upper bound of the render distance slider, capped at Pomme's 80-chunk
-    /// client maximum and further limited by a server's announced view
-    /// distance.
+    /// Upper bound of the render-distance slider, further limited by the
+    /// server's announced view distance.
     fn render_distance_max(&self) -> u32 {
+        let client_max = crate::world::chunk::MAX_CLIENT_VIEW_DISTANCE;
         if self.server_render_distance > 0 {
-            self.server_render_distance.clamp(3, 80)
+            self.server_render_distance.clamp(3, client_max)
         } else {
-            80
+            client_max
         }
     }
 
@@ -1436,6 +1454,10 @@ impl MainMenu {
                             self.focused_field = Some(0);
                             self.pack_search.set_focused(true);
                         }
+                    }
+                    if label.starts_with("Pomme Version:") {
+                        self.pomme_version = next_pomme_version(&self.pomme_version);
+                        self.save_settings(key_bindings);
                     }
                     if label.starts_with("GUI Scale:") {
                         // Capped at what Auto resolves to, as vanilla's range is.

@@ -32,10 +32,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: mod-compat-${{ matrix.os }}
-      - name: Test package inspection and manifests
+      - name: Test inspection, manifests, and compiled Java fixtures
         run: cargo test -p pomme-mod --locked
       - name: Clippy
         run: cargo clippy -p pomme-mod --all-targets --locked -- -D warnings

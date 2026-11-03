@@ -1,118 +1,54 @@
-# Shared agent handoff — Java/Fabric compatibility
+# Pomme engineering handoff
 
-_Last updated: 2026-11-01 (Grok review of 806dbc7)_
+_Last updated: 2026-11-03_
 
-## Current branch and baseline
+## Worktree and branches
 
-- Branch: `experiment/rust-native-mod-compat`
-- Reviewed commit: `806dbc7` (`feat(mods): add conservative compatibility verdicts and agent handoff`)
-- Follow-up fix commit will align the opcode whitelist with the interpreter.
-- Main iOS/IPA branch remains isolated: `ios-ipa-cloud-build`.
+- The Java/Fabric compatibility experiment is on `experiment/rust-native-mod-compat` in `PommeMC-iOS-Mobile`.
+- The iOS IPA work remains isolated on `ios-ipa-cloud-build` in `/Users/aiden/Pomme`.
+- The shader/fast-mode optimization work is on `experiment/ios-umo-shader-fastmode` in `PommeMC-iOS-Mobile`.
+- Keep these efforts isolated until the user chooses an integration target.
 
-## Grok independent review of 806dbc7
+## Mod compatibility work completed
 
-### 1. Opcode whitelist vs interpreter (critical)
+- Defensive Fabric JAR and Java class-file inspection, with archive entry, per-class, aggregate class-byte, and class-count limits.
+- Fabric metadata inventory, opcode/method/field-reference summaries, and conservative compatibility verdicts.
+- Restricted fuel-metered integer bytecode interpreter and typed IR/control-flow graph lowering.
+- Dynamic-linkage inventory for `invokedynamic`, method handles and types, dynamic constants, and `BootstrapMethods`.
+- `pomme-mod-inspect` reports those features; dynamic-linkage features classify as `HardJava`.
+- Java 8 source fixtures cover integer arithmetic/control flow and lambda bootstraps. CI installs Temurin 21 to compile them with `javac --release 8`.
 
-`compatibility_verdict` used a hard-coded `SUBSET` list that included `"nop"`.
-The interpreter in `java_subset.rs` does **not** accept opcode `0x00` (nop).
-This was a false-positive path: a JAR whose only observed opcode was `nop`
-could be labelled `SimpleJavaCandidate` even though execution would reject it.
+## Iris shaderpack port progress
 
-**Fix applied:** removed `nop` from the whitelist and added a regression test
-`compatibility_verdict_rejects_opcodes_outside_interpreter_subset`.
+- Pomme already has a native Iris/OptiFine-format pipeline: it reads folder or ZIP packs, preprocesses and translates GLSL to SPIR-V, then runs shadow, gbuffer, deferred/composite, and final passes through its Vulkan renderer (MoltenVK on iOS).
+- This is shaderpack compatibility code, not the Java Iris mod or its Minecraft mixins. Pack support is still partial: clouds, particles, weather, hand/item, and glint draw paths are not connected to pack programs yet; some Iris uniforms also use defaults.
+- `biome_category` now maps the active biome registry name to Iris's legacy category IDs instead of always returning `CAT_NONE`.
+- Next shader milestone: route particle and weather geometry into Iris `gbuffers_*` programs, then handle held items/clouds and fill out the remaining uniforms. Track packs that compile and render correctly on iOS separately from desktop Vulkan.
 
-Actual interpreter-supported opcodes (must stay in sync):
+## Mobile rendering and version selection
 
-- Constants: `iconst_m1`…`iconst_5`, `bipush`, `sipush`
-- Locals: `iload` / `iload_0`…`iload_3`, `istore` / `istore_0`…`istore_3`
-- Stack: `pop`, `dup`
-- Arithmetic: `iadd`, `isub`, `imul`, `idiv`, `irem`, `ineg`
-- Bitwise / shift: `ishl`, `ishr`, `iushr`, `iand`, `ior`, `ixor`, `iinc`
-- Branches: `ifeq`…`ifle`, `if_icmpeq`…`if_icmple`, `goto`
-- Return: `ireturn` only (void `return` / `0xb1` is not accepted for the i32 helper path)
+- iOS defaults now use a 16-chunk render distance and 16-chunk full-detail radius; farther loaded terrain meshes through progressively coarser LOD levels. The protocol can request at most 127 chunks because the client view-distance field is a signed byte, and the cache reserves 128 chunks.
+- Particle and precipitation vertex scratch buffers are retained between frames. Water sections are sorted back-to-front by section center to reduce translucent overlap artifacts.
+- Options can select a Pomme version from the translated 1.20.1–26.3 protocol list. The selection takes effect after restart and creates `profiles/<name>/mods/<version>` for that version.
+- The current `pomme-mod` code only inspects Fabric packages and experiments with a tiny Java subset / WASM sandbox. The live client does not load Fabric Java mods or execute Pomme WASM mods yet. The 1,000-chunk horizon also needs terrain from a server extension or a persistent distant-terrain cache; the normal protocol does not provide that range.
 
-### 2. Verdict conservatism (good)
+## Validation status
 
-The following paths correctly force non-candidate results:
+- `cargo test -p pomme-mod --locked`: 30 Rust unit tests pass on this host.
+- The two `javac` integration checks are present but skip locally because this Mac has no JDK. The package CI installs a JDK and runs them.
+- Re-run `cargo fmt -p pomme-mod -- --check`, `cargo clippy -p pomme-mod --all-targets --locked -- -D warnings`, and `cargo check -p pomme-mod --target aarch64-apple-ios --locked` before merging.
 
-- Any skipped class → `Unsupported`
-- High-risk APIs / native methods / class major > 65 → `Unsupported`
-- Entrypoints, mixins, access wideners, nested JARs, static initializers,
-  reflection, threading, filesystem, network, dynamic class loading → `HardJava`
-- Non-empty `invoked_methods` → falls through to `HardJava` (cannot be Simple)
+## Limits that remain
 
-No false “loadable mod” claim is made. Documentation correctly states that
-`SimpleJavaCandidate` only means observed opcodes fit the tiny integer subset.
+- This is not a JVM, Fabric Loader, or end-to-end Java mod port.
+- No Fabric lifecycle, event bus/API, Mixin, access widener, object model, arrays, exceptions, class loading, or general Java library support exists.
+- `SimpleJavaCandidate` only says observed bytecode fits a tiny static integer subset. It does not mean a mod can load.
+- `pomme.mod.json` and the WASM ABI remain experimental and are not connected to the live game loop.
 
-### 3. Class-file parser gaps (still open)
+## Next milestones
 
-- Fields are counted only; `getfield` / `putfield` / `getstatic` / `putstatic`
-  owners are not aggregated into the report.
-- `invokedynamic` is visible only as an opcode name; the `BootstrapMethods`
-  attribute is skipped by length and never inspected.
-- Annotation counting is partial (RuntimeVisible/InvisibleAnnotations only).
-- Constant-pool tags for MethodHandle / MethodType / Dynamic are stored as
-  `Other` and not surfaced in the inventory.
-
-These gaps make the report an **initial triage signal**, not a complete static
-proof. The handoff already notes this; keep it conservative.
-
-### 4. Archive resource limits (still open)
-
-Current limits:
-
-- Max archive entries: 10_000
-- Max per-class bytes: 32 MiB
-- Max manifest bytes: 1 MiB
-
-Missing:
-
-- Aggregate uncompressed size budget across all class entries
-- Explicit total class-count budget independent of ZIP entry count
-
-A crafted JAR with many medium-sized classes can still expand memory more than
-intended. Recommend adding a running uncompressed-byte counter in
-`analyze_fabric_jar` / `analyze_jar_classes`.
-
-### 5. Fixtures
-
-Most interpreter tests still use hand-built class bytes. There is a
-`pomme-mod/tests/fixtures/Arithmetic.java` source file but it is not yet wired
-into automated tests via `javac --release 8`. Next implementation pass should
-compile that fixture (or a new one) and assert both analysis and execution.
-
-## Implemented (cumulative)
-
-- Defensive Java class-file and JAR bytecode inventory (`classfile.rs`).
-- Restricted, fuel-metered Rust interpreter for a small static integer-method subset (`java_subset.rs`).
-- `pomme-mod-inspect` CLI for Fabric metadata and bytecode triage with verdict.
-- Conservative porting verdicts: `NativeWasm`, `MetadataOnly`, `SimpleJavaCandidate`, `HardJava`, `Unsupported`.
-- Whitelist now aligned with the interpreter (nop removed).
-- Shared agent workflow docs.
-
-## Current hard limitations
-
-- No general JVM, object model, arrays, strings, exceptions, class loader, or general method invocation.
-- No Fabric Loader lifecycle, entrypoint construction, event bus, Fabric API, Mixin, or access-widener support.
-- No end-to-end Java Fabric mod has been ported or loaded in-game.
-- `SimpleJavaCandidate` is **not** a loadable mod.
-
-## Next work (recommended order)
-
-1. **ChatGPT review request:** confirm whitelist alignment and decide whether
-   void `return` (0xb1) should be accepted for pure helpers that return void.
-2. Add aggregate uncompressed-byte + class-count budgets in JAR analysis.
-3. Inventory field references and flag `invokedynamic` / BootstrapMethods.
-4. Wire a real `javac --release 8` fixture into tests.
-5. Only after the above: design the next interpreter milestone (objects/strings).
-
-## Local validation (this review pass)
-
-- `cargo test -p pomme-mod --locked`: 18 passed before fix; re-run after whitelist change.
-- Full fmt / clippy / iOS check will be run with the fix commit.
-
-## Collaboration note
-
-User requested agent-to-agent messages move to the Mac Notes app
-(“PommeMC Agent Collab” / “Grok note: …”). Repo handoff files remain the
-authoritative engineering record; Notes is for short status pings.
+1. Run the JDK-backed fixture checks in CI (or install a local JDK) and fix any real compiler-output gaps.
+2. Add permissively licensed real Fabric JAR fixtures and publish conservative per-version/dependency verdicts.
+3. Define a versioned Pomme mod host ABI and connect the sandbox to game lifecycle hooks.
+4. Benchmark WASM startup, fuel metering, and memory on an iPhone before enabling modules in the iOS app.
+5. Keep Java class execution disabled until verification, class-library behavior, and explicit resource limits are sufficient.

@@ -121,12 +121,27 @@ pub fn run(args: LaunchArgs, platform: Platform) {
     update::clean_up();
     let check_for_update = update::enabled(&args);
 
-    // Bare launches take the newest joinable version, skipping any staged one.
+    // Bare launches use the profile's saved Pomme version. `--version` stays
+    // an explicit override for launchers and development.
     let default_version = VERSIONS
         .iter()
         .find(|v| net::translate::joinable(v.protocol))
         .unwrap_or(&NATIVE);
-    let version = args.version.as_deref().unwrap_or(default_version.name);
+    let saved_version = if args.version.is_none() {
+        let profile = args
+            .game_dir
+            .as_deref()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| pomme_dirs::layout().default_profile());
+        crate::ui::menu::saved_pomme_version(&profile)
+    } else {
+        None
+    };
+    let version = args
+        .version
+        .as_deref()
+        .or(saved_version.as_deref())
+        .unwrap_or(default_version.name);
 
     let resolved_version = ProtocolVersion::from_name(version);
     match resolved_version {

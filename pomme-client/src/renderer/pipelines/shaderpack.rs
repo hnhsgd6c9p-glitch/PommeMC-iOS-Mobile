@@ -1800,8 +1800,11 @@ impl UniformValues {
         set("blindness", Value::Float(data.world.blindness));
         set("eyeAltitude", Value::Float(camera.y as f32));
         set("biome", Value::Int(data.world.biome));
-        // TODO: Iris's biome categories, from the biome tags.
-        set("biome_category", Value::Int(0));
+        let biome_name = data.world.biome_names.get(data.world.biome as usize);
+        set(
+            "biome_category",
+            Value::Int(biome_category(biome_name.map(String::as_str))),
+        );
         set("biome_precipitation", Value::Int(data.world.precipitation));
         set("temperature", Value::Float(data.world.temperature));
         set("rainfall", Value::Float(data.world.rainfall));
@@ -1895,6 +1898,74 @@ impl UniformValues {
             bytes[at..end].copy_from_slice(&data[..end - at]);
         }
         bytes
+    }
+}
+
+/// Iris's legacy `biome_category` uniform, derived from the biome registry
+/// name. Pomme's protocol layer supplies biome ids and names, but not the
+/// pre-1.18 category enum that Iris exposes to shader packs.
+fn biome_category(name: Option<&str>) -> i32 {
+    let Some(path) = name.and_then(|name| name.rsplit(':').next()) else {
+        return 0;
+    };
+    if matches!(
+        path,
+        "the_nether"
+            | "nether_wastes"
+            | "soul_sand_valley"
+            | "crimson_forest"
+            | "warped_forest"
+            | "basalt_deltas"
+    ) {
+        16 // CAT_NETHER
+    } else if matches!(
+        path,
+        "the_end"
+            | "small_end_islands"
+            | "end_midlands"
+            | "end_highlands"
+            | "end_barrens"
+    )
+    {
+        8 // CAT_THE_END
+    } else if path.contains("mushroom") {
+        15 // CAT_MUSHROOM
+    } else if path.contains("ocean") {
+        11 // CAT_OCEAN
+    } else if path.contains("river") {
+        13 // CAT_RIVER
+    } else if path.contains("beach") || path == "stony_shore" {
+        9 // CAT_BEACH
+    } else if path.contains("swamp") || path == "mangrove_swamp" {
+        14 // CAT_SWAMP
+    } else if path.contains("desert") {
+        12 // CAT_DESERT
+    } else if path.contains("badlands") || path == "eroded_badlands" {
+        4 // CAT_MESA
+    } else if path.contains("savanna") {
+        6 // CAT_SAVANNA
+    } else if path.contains("jungle") || path == "bamboo_jungle" {
+        3 // CAT_JUNGLE
+    } else if path.contains("taiga") {
+        1 // CAT_TAIGA
+    } else if path.contains("cave") || path == "deep_dark" {
+        18 // CAT_UNDERGROUND
+    } else if path.contains("windswept")
+        || path.contains("mountain")
+        || matches!(path, "meadow" | "grove" | "cherry_grove")
+    {
+        17 // CAT_MOUNTAIN
+    } else if path.contains("snow")
+        || path.contains("ice")
+        || matches!(path, "frozen_peaks" | "jagged_peaks")
+    {
+        7 // CAT_ICY
+    } else if path.contains("forest") || path == "pale_garden" {
+        10 // CAT_FOREST
+    } else if path.contains("plains") || path == "sunflower_plains" {
+        5 // CAT_PLAINS
+    } else {
+        0 // CAT_NONE
     }
 }
 

@@ -202,6 +202,12 @@ pub fn compatibility_verdict(
                     | "filesystem_api_usage"
                     | "network_api_usage"
                     | "dynamic_class_loading"
+                    | "invokedynamic"
+                    | "method_handles"
+                    | "method_types"
+                    | "dynamic_constants"
+                    | "invokedynamic_constants"
+                    | "bootstrap_methods"
             )
         })
     {
@@ -456,6 +462,7 @@ fn validate_module_path(path: &str) -> Result<(), ModError> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
     use std::io::Write;
 
     use zip::ZipWriter;
@@ -555,6 +562,37 @@ mod tests {
             compatibility_verdict(&package_report, &inventory),
             CompatibilityVerdict::HardJava
         );
+    }
+
+    #[test]
+    fn compatibility_verdict_rejects_dynamic_linkage_from_integer_tier() {
+        let manifest = br#"{"schemaVersion":1,"id":"lambda_mod","version":"1"}"#;
+        let package_report = inspect_package(&package(&[
+            (FABRIC_MANIFEST, manifest),
+            ("Lambda.class", b"class"),
+        ]))
+        .unwrap();
+        for feature in [
+            "invokedynamic",
+            "method_handles",
+            "method_types",
+            "dynamic_constants",
+            "invokedynamic_constants",
+            "bootstrap_methods",
+        ] {
+            let inventory = JarCompatibilityReport {
+                analyzed_classes: 1,
+                class_versions: BTreeMap::from([(52, 1)]),
+                opcode_counts: BTreeMap::from([("ireturn".into(), 1)]),
+                feature_flags: BTreeSet::from([feature.to_owned()]),
+                ..JarCompatibilityReport::default()
+            };
+            assert_eq!(
+                compatibility_verdict(&package_report, &inventory),
+                CompatibilityVerdict::HardJava,
+                "{feature} must stay out of the integer-helper tier"
+            );
+        }
     }
 
     #[test]

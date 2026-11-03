@@ -56,6 +56,18 @@ fn main() -> ExitCode {
                     );
                     println!("Class-file versions: {:?}", report.class_versions);
                     println!("Detected features: {:?}", report.feature_flags);
+                    println!("invokedynamic sites: {}", report.invokedynamic_sites);
+                    println!(
+                        "invokedynamic constants: {}",
+                        report.invokedynamic_constants
+                    );
+                    println!("Dynamic constants: {}", report.dynamic_constants);
+                    println!(
+                        "Method-handle constants: {}",
+                        report.method_handle_constants
+                    );
+                    println!("Method-type constants: {}", report.method_type_constants);
+                    println!("Bootstrap methods: {}", report.bootstrap_methods);
                     println!(
                         "Distinct referenced classes: {}",
                         report.referenced_classes.len()
