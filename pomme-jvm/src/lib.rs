@@ -324,7 +324,11 @@ fn execute_minimal_fabric_entrypoint(
     if !(45..=65).contains(&class.major_version) {
         return Err(ModExecutionError::UnsupportedClassVersion(display_name.to_owned()));
     }
-    if class.fields != 0 || class.has_static_initializer {
+    if class.fields != 0
+        || class.has_static_initializer
+        || class.access_flags & 0x0001 == 0
+        || !class.interfaces.iter().any(|name| name == "net/fabricmc/api/ModInitializer")
+    {
         return Err(ModExecutionError::UnsupportedClassShape(display_name.to_owned()));
     }
 
@@ -441,7 +445,7 @@ mod tests {
         u4(&mut class, 0xcafebabe);
         u2(&mut class, 0);
         u2(&mut class, 65);
-        u2(&mut class, 19);
+        u2(&mut class, 21);
         utf8(&mut class, "example/ExampleMod"); // #1
         class.push(7); u2(&mut class, 1);       // #2 Class
         utf8(&mut class, "java/lang/Object");   // #3
@@ -460,11 +464,14 @@ mod tests {
         class.push(10); u2(&mut class, 12); u2(&mut class, 15); // #16 Methodref
         utf8(&mut class, "Hello from Java");     // #17
         class.push(8); u2(&mut class, 17);       // #18 String
+        utf8(&mut class, "net/fabricmc/api/ModInitializer"); // #19
+        class.push(7); u2(&mut class, 19);       // #20 Class
 
         u2(&mut class, 0x0021); // public super
         u2(&mut class, 2);     // this
         u2(&mut class, 4);     // super
-        u2(&mut class, 0);     // interfaces
+        u2(&mut class, 1);     // interfaces
+        u2(&mut class, 20);    // ModInitializer
         u2(&mut class, 0);     // fields
         u2(&mut class, 2);     // methods
 
