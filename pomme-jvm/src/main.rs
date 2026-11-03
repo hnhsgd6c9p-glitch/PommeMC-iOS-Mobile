@@ -12,10 +12,11 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     }
 
+    let path = std::path::PathBuf::from(path);
     let bytes = match std::fs::read(&path) {
         Ok(bytes) => bytes,
         Err(error) => {
-            eprintln!("Could not read {}: {error}", std::path::Path::new(&path).display());
+            eprintln!("Could not read {}: {error}", path.display());
             return ExitCode::FAILURE;
         }
     };
