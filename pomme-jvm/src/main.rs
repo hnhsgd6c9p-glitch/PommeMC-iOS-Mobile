@@ -26,7 +26,7 @@ fn main() -> ExitCode {
             for class in report.initialized_classes {
                 println!("  initialized {class}");
             }
-            println!("Executed {} JVM instruction(s).", report.instructions_executed);
+            for message in report.logs { println!("[Java mod] {message}"); }\n            println!("Executed {} JVM instruction(s).", report.instructions_executed);
             ExitCode::SUCCESS
         }
         Err(error) => {
