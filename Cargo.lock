@@ -4653,6 +4653,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "pomme-jvm"
+version = "0.1.0"
+dependencies = [
+ "pomme-mod",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "zip 9.1.3",
+]
+
+[[package]]
 name = "pomme-mod"
 version = "0.1.0"
 dependencies = [

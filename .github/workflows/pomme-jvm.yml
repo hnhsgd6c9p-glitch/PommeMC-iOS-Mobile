@@ -1,0 +1,36 @@
+name: Pomme JVM tests
+
+on:
+  push:
+    branches: [experiment/pomme-jvm-runtime]
+  pull_request:
+    branches: [experiment/rust-native-mod-compat]
+    paths:
+      - "pomme-jvm/**"
+      - "pomme-mod/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/pomme-jvm.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run JVM and mod-loader tests
+        run: cargo test -p pomme-jvm -p pomme-mod
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Build the example Java Fabric mod
+        run: sh pomme-jvm/examples/tiny-fabric-mod/build.sh
+      - name: Execute the example Java mod in Pomme JVM
+        run: cargo run -p pomme-jvm -- pomme-jvm/examples/tiny-fabric-mod/build/tiny-example.jar
