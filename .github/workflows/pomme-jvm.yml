@@ -26,3 +26,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Run JVM and mod-loader tests
         run: cargo test -p pomme-jvm -p pomme-mod
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Build the example Java Fabric mod
+        run: ./pomme-jvm/examples/tiny-fabric-mod/build.sh
+      - name: Execute the example Java mod in Pomme JVM
+        run: cargo run -p pomme-jvm -- pomme-jvm/examples/tiny-fabric-mod/build/tiny-example.jar
