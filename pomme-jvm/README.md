@@ -30,12 +30,14 @@ Expected output includes:
 ```text
 Loaded Java Fabric mod: tiny_example
   initialized example.ExampleMod
-[Java mod] Hello from a Java Fabric-style mod!
+[Java mod] Hello from a Java Fabric mod!
 Executed 3 JVM instruction(s).
 ```
 
-The Java source calls `pomme.api.Pomme.log(String)`. The tiny Pomme API stub
-is used only at compile time; it is not packaged in the JAR. The Rust runtime
+The Java class implements Fabric's `net.fabricmc.api.ModInitializer` interface
+and is discovered through the standard `main` entrypoint metadata. Compile-time
+stubs for Fabric's interface and `pomme.api.Pomme` are not packaged in the JAR.
+The Java source calls `pomme.api.Pomme.log(String)`. The Rust runtime
 resolves that method reference and handles the call through its native bridge.
 
 The supported Java class shape is intentionally narrow:
