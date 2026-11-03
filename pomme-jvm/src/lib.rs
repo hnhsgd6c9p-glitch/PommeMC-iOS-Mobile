@@ -253,9 +253,8 @@ struct FabricModMetadata {
 /// This milestone intentionally supports the smallest useful Fabric shape:
 /// a Java 21-or-earlier class with no instance fields or static initializer,
 /// a trivial constructor that only invokes Object.<init>, and a public
-/// instance onInitialize()V whose body is a single return opcode.
-/// It proves JAR -> Fabric metadata -> class file -> JVM method execution;
-/// it is not yet general Fabric Loader compatibility.
+/// instance onInitialize()V containing string constants, Pomme.log bridge
+/// calls, and return. It is not general Fabric Loader compatibility.
 pub fn run_fabric_mod_jar(bytes: &[u8], fuel_per_entrypoint: u64) -> Result<ModRunReport, ModExecutionError> {
     use std::io::Read;
     use zip::ZipArchive;
