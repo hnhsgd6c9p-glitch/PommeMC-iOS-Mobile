@@ -184,6 +184,175 @@ fn branch_target(origin: usize, offset: isize, code_len: usize) -> Result<usize,
     Ok(target as usize)
 }
 
+
+
+/// Result of executing a deliberately small, verified Fabric-JAR subset.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModRunReport {
+    pub mod_id: String,
+    pub initialized_classes: Vec<String>,
+    pub instructions_executed: u64,
+}
+
+/// Errors raised while loading or executing the first supported Java-mod tier.
+#[derive(Debug, Error)]
+pub enum ModExecutionError {
+    #[error("invalid mod JAR: {0}")]
+    Zip(#[from] zip::result::ZipError),
+    #[error("failed to read mod JAR: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("invalid fabric.mod.json: {0}")]
+    Metadata(#[from] serde_json::Error),
+    #[error("mod JAR has no fabric.mod.json")]
+    MissingFabricMetadata,
+    #[error("fabric.mod.json must contain schemaVersion 1 and a non-empty id")]
+    InvalidMetadata,
+    #[error("fabric.mod.json has no main entrypoints")]
+    NoMainEntrypoints,
+    #[error("unsupported Fabric entrypoint value (expected a class-name string)")]
+    InvalidEntrypoint,
+    #[error("entrypoint class {0} is missing from the JAR")]
+    MissingClass(String),
+    #[error("class-file analysis failed: {0}")]
+    ClassFile(#[from] pomme_mod::ClassFileError),
+    #[error("class {0} is outside the supported Java class-file versions (45..=65)")]
+    UnsupportedClassVersion(String),
+    #[error("class {0} must have no instance fields or static initializer yet")]
+    UnsupportedClassShape(String),
+    #[error("class {0} must have a trivial public no-argument constructor calling only Object.<init>")]
+    UnsupportedConstructor(String),
+    #[error("class {0} must implement a public instance onInitialize()V method")]
+    MissingInitializer(String),
+    #[error("class {0} onInitialize()V is beyond the first supported no-op method tier")]
+    UnsupportedInitializer(String),
+    #[error("JVM execution failed: {0}")]
+    Vm(#[from] VmError),
+}
+
+#[derive(serde::Deserialize)]
+struct FabricModMetadata {
+    #[serde(rename = "schemaVersion")]
+    schema_version: u32,
+    id: String,
+    #[serde(default)]
+    entrypoints: std::collections::BTreeMap<String, Vec<serde_json::Value>>,
+}
+
+/// Load and execute the first supported Java Fabric mod from a JAR.
+///
+/// This milestone intentionally supports the smallest useful Fabric shape:
+/// a Java 21-or-earlier class with no instance fields or static initializer,
+/// a trivial constructor that only invokes Object.<init>, and a public
+/// instance onInitialize()V whose body is a single return opcode.
+/// It proves JAR -> Fabric metadata -> class file -> JVM method execution;
+/// it is not yet general Fabric Loader compatibility.
+pub fn run_fabric_mod_jar(bytes: &[u8], fuel_per_entrypoint: u64) -> Result<ModRunReport, ModExecutionError> {
+    use std::io::Read;
+    use zip::ZipArchive;
+
+    let mut archive = ZipArchive::new(std::io::Cursor::new(bytes))?;
+    if archive.len() > 10_000 {
+        return Err(ModExecutionError::InvalidMetadata);
+    }
+
+    let metadata = {
+        let mut file = archive.by_name("fabric.mod.json")
+            .map_err(|_| ModExecutionError::MissingFabricMetadata)?;
+        if file.size() > 1024 * 1024 {
+            return Err(ModExecutionError::InvalidMetadata);
+        }
+        let mut raw = Vec::with_capacity(file.size() as usize);
+        file.read_to_end(&mut raw)?;
+        serde_json::from_slice::<FabricModMetadata>(&raw)?
+    };
+    if metadata.schema_version != 1 || metadata.id.is_empty() || metadata.id.len() > 64 {
+        return Err(ModExecutionError::InvalidMetadata);
+    }
+    let main = metadata.entrypoints.get("main").ok_or(ModExecutionError::NoMainEntrypoints)?;
+    if main.is_empty() {
+        return Err(ModExecutionError::NoMainEntrypoints);
+    }
+
+    let mut initialized_classes = Vec::with_capacity(main.len());
+    let mut instructions_executed = 0u64;
+    for value in main {
+        let class_name = value.as_str()
+            .or_else(|| value.get("value").and_then(serde_json::Value::as_str))
+            .ok_or(ModExecutionError::InvalidEntrypoint)?;
+        let path = format!("{}.class", class_name.replace('.', "/"));
+        let class_bytes = {
+            let mut file = archive.by_name(&path)
+                .map_err(|_| ModExecutionError::MissingClass(class_name.to_owned()))?;
+            if file.size() > 32 * 1024 * 1024 {
+                return Err(ModExecutionError::InvalidMetadata);
+            }
+            let mut raw = Vec::with_capacity(file.size() as usize);
+            file.read_to_end(&mut raw)?;
+            raw
+        };
+        instructions_executed = instructions_executed.saturating_add(
+            execute_minimal_fabric_entrypoint(&class_bytes, class_name, fuel_per_entrypoint)?
+        );
+        initialized_classes.push(class_name.to_owned());
+    }
+
+    Ok(ModRunReport {
+        mod_id: metadata.id,
+        initialized_classes,
+        instructions_executed,
+    })
+}
+
+fn execute_minimal_fabric_entrypoint(
+    class_bytes: &[u8],
+    display_name: &str,
+    fuel: u64,
+) -> Result<u64, ModExecutionError> {
+    let class = pomme_mod::analyze_class(class_bytes)?;
+    if !(45..=65).contains(&class.major_version) {
+        return Err(ModExecutionError::UnsupportedClassVersion(display_name.to_owned()));
+    }
+    if class.fields != 0 || class.has_static_initializer {
+        return Err(ModExecutionError::UnsupportedClassShape(display_name.to_owned()));
+    }
+
+    let constructor = class.methods.iter()
+        .find(|method| method.name == "<init>" && method.descriptor == "()V")
+        .ok_or_else(|| ModExecutionError::UnsupportedConstructor(display_name.to_owned()))?;
+    let valid_constructor = constructor.access_flags & 0x0001 != 0
+        && constructor.code.len() == 5
+        && constructor.code[0] == 0x2a
+        && constructor.code[1] == 0xb7
+        && constructor.code[4] == 0xb1
+        && constructor.invoked_methods.len() == 1
+        && constructor.invoked_methods[0].owner == "java/lang/Object"
+        && constructor.invoked_methods[0].name == "<init>"
+        && constructor.invoked_methods[0].descriptor == "()V";
+    if !valid_constructor {
+        return Err(ModExecutionError::UnsupportedConstructor(display_name.to_owned()));
+    }
+
+    let initializer = class.methods.iter()
+        .find(|method| method.name == "onInitialize" && method.descriptor == "()V")
+        .ok_or_else(|| ModExecutionError::MissingInitializer(display_name.to_owned()))?;
+    let valid_initializer = initializer.access_flags & 0x0001 != 0
+        && initializer.access_flags & 0x0008 == 0
+        && initializer.code == [0xb1]
+        && initializer.invoked_methods.is_empty()
+        && initializer.field_accesses.is_empty();
+    if !valid_initializer {
+        return Err(ModExecutionError::UnsupportedInitializer(display_name.to_owned()));
+    }
+
+    let vm = Vm::new(ExecutionLimits {
+        max_stack: usize::from(initializer.max_stack).max(1),
+        max_locals: usize::from(initializer.max_locals).max(1),
+        fuel,
+    });
+    vm.execute(&initializer.code, &[0])?;
+    Ok(1)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
