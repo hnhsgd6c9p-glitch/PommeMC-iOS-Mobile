@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-15-intel
     timeout-minutes: 90
     steps:
       - name: Check out source and submodules
