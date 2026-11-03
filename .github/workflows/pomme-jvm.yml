@@ -1,0 +1,28 @@
+name: Pomme JVM tests
+
+on:
+  push:
+    branches: [experiment/pomme-jvm-runtime]
+  pull_request:
+    branches: [experiment/rust-native-mod-compat]
+    paths:
+      - "pomme-jvm/**"
+      - "pomme-mod/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/pomme-jvm.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run JVM and mod-loader tests
+        run: cargo test -p pomme-jvm -p pomme-mod
