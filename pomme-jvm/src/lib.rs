@@ -297,7 +297,24 @@ pub fn run_fabric_mod_jar(bytes: &[u8], fuel_per_entrypoint: u64) -> Result<ModR
             && class_name.len() <= 512
             && class_name.split('.').all(|part| {
                 !part.is_empty()
-                    && part.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'
+                    && part.bytes().all(|byte| {
+                        byte.is_ascii_alphanumeric() || byte == b'_' || byte == 0x24
+                    })
+            });
+        if !valid_name {
+            return Err(ModExecutionError::InvalidEntrypoint);
+        }
+        let path = format!("{}.class", class_name.replace('.', "/"));
+        let class_bytes = {
+            let file = archive.by_name(&path)
+                .map_err(|_| ModExecutionError::MissingClass(class_name.to_owned()))?;
+            let mut raw = Vec::new();
+            file.take(32 * 1024 * 1024 + 1).read_to_end(&mut raw)?;
+            if raw.len() > 32 * 1024 * 1024 {
+                return Err(ModExecutionError::InvalidMetadata);
+            }
+            raw
+        };
         let (executed, mut class_logs) =
             execute_minimal_fabric_entrypoint(&class_bytes, class_name, fuel_per_entrypoint)?;
         instructions_executed = instructions_executed.saturating_add(executed);
