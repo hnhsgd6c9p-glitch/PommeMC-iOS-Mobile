@@ -428,10 +428,12 @@ mod tests {
     }
 
     #[test]
-    fn rejects_non_noop_fabric_entrypoints_instead_of_claiming_compatibility() {
+    fn enforces_fuel_for_fabric_entrypoints() {
         let jar = tiny_fabric_mod_jar();
-        let report = run_fabric_mod_jar(&jar, 0).unwrap();
-        assert_eq!(report.instructions_executed, 1);
+        assert!(matches!(
+            run_fabric_mod_jar(&jar, 0),
+            Err(ModExecutionError::Vm(VmError::FuelExhausted))
+        ));
     }
 
     #[test]
