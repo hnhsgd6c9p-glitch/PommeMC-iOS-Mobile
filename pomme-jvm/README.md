@@ -43,6 +43,7 @@ resolves that method reference and handles the call through its native bridge.
 The supported Java class shape is intentionally narrow:
 
 - A valid `fabric.mod.json` with a `main` entrypoint class.
+- The entrypoint class implements `net.fabricmc.api.ModInitializer`.
 - Java class-file versions 45 through 65 (Java 21).
 - No instance fields or static class initializer.
 - A public no-argument constructor whose bytecode only calls
