@@ -200,7 +200,8 @@ pub struct ModRunReport {
     pub mod_id: String,
     pub initialized_classes: Vec<String>,
     pub instructions_executed: u64,
-}
+    /// Messages emitted through the Pomme Java bridge during initialization.
+    pub logs: Vec<String>,
 
 /// Errors raised while loading or executing the first supported Java-mod tier.
 #[derive(Debug, Error)]
@@ -231,7 +232,7 @@ pub enum ModExecutionError {
     UnsupportedConstructor(String),
     #[error("class {0} must implement a public instance onInitialize()V method")]
     MissingInitializer(String),
-    #[error("class {0} onInitialize()V is beyond the first supported no-op method tier")]
+    #[error("class {0} onInitialize()V contains unsupported bytecode or API calls")]
     UnsupportedInitializer(String),
     #[error("JVM execution failed: {0}")]
     Vm(#[from] VmError),
@@ -283,6 +284,7 @@ pub fn run_fabric_mod_jar(bytes: &[u8], fuel_per_entrypoint: u64) -> Result<ModR
 
     let mut initialized_classes = Vec::with_capacity(main.len());
     let mut instructions_executed = 0u64;
+    let mut logs = Vec::new();
     for value in main {
         let class_name = value.as_str()
             .or_else(|| value.get("value").and_then(serde_json::Value::as_str))
@@ -298,9 +300,10 @@ pub fn run_fabric_mod_jar(bytes: &[u8], fuel_per_entrypoint: u64) -> Result<ModR
             file.read_to_end(&mut raw)?;
             raw
         };
-        instructions_executed = instructions_executed.saturating_add(
-            execute_minimal_fabric_entrypoint(&class_bytes, class_name, fuel_per_entrypoint)?
-        );
+        let (executed, mut class_logs) =
+            execute_minimal_fabric_entrypoint(&class_bytes, class_name, fuel_per_entrypoint)?;
+        instructions_executed = instructions_executed.saturating_add(executed);
+        logs.append(&mut class_logs);
         initialized_classes.push(class_name.to_owned());
     }
 
@@ -308,6 +311,7 @@ pub fn run_fabric_mod_jar(bytes: &[u8], fuel_per_entrypoint: u64) -> Result<ModR
         mod_id: metadata.id,
         initialized_classes,
         instructions_executed,
+        logs,
     })
 }
 
@@ -315,7 +319,7 @@ fn execute_minimal_fabric_entrypoint(
     class_bytes: &[u8],
     display_name: &str,
     fuel: u64,
-) -> Result<u64, ModExecutionError> {
+) -> Result<(u64, Vec<String>), ModExecutionError> {
     let class = pomme_mod::analyze_class(class_bytes)?;
     if !(45..=65).contains(&class.major_version) {
         return Err(ModExecutionError::UnsupportedClassVersion(display_name.to_owned()));
@@ -343,22 +347,75 @@ fn execute_minimal_fabric_entrypoint(
     let initializer = class.methods.iter()
         .find(|method| method.name == "onInitialize" && method.descriptor == "()V")
         .ok_or_else(|| ModExecutionError::MissingInitializer(display_name.to_owned()))?;
-    let valid_initializer = initializer.access_flags & 0x0001 != 0
-        && initializer.access_flags & 0x0008 == 0
-        && initializer.code == [0xb1]
-        && initializer.invoked_methods.is_empty()
-        && initializer.field_accesses.is_empty();
-    if !valid_initializer {
-        return Err(ModExecutionError::UnsupportedInitializer(display_name.to_owned()));
+    if initializer.access_flags & 0x0001 == 0 || initializer.access_flags & 0x0008 != 0 {
+        return Err(ModExecutionError::MissingInitializer(display_name.to_owned()));
     }
 
-    let vm = Vm::new(ExecutionLimits {
-        max_stack: usize::from(initializer.max_stack).max(1),
-        max_locals: usize::from(initializer.max_locals).max(1),
-        fuel,
-    });
-    vm.execute(&initializer.code, &[0])?;
-    Ok(1)
+    // First object-model milestone: the receiver is represented by a checked
+    // placeholder local. The supported method body cannot inspect or mutate
+    // object fields; it can emit messages through the Pomme Java bridge.
+    let code = &initializer.code;
+    let mut pc = 0usize;
+    let mut fuel_left = fuel;
+    let mut instructions = 0u64;
+    let mut stack: Vec<String> = Vec::with_capacity(usize::from(initializer.max_stack));
+    let mut logs = Vec::new();
+    loop {
+        if fuel_left == 0 {
+            return Err(ModExecutionError::Vm(VmError::FuelExhausted));
+        }
+        fuel_left -= 1;
+        instructions += 1;
+        let opcode = *code.get(pc).ok_or_else(|| ModExecutionError::UnsupportedInitializer(display_name.to_owned()))?;
+        pc += 1;
+        match opcode {
+            0x00 => {}
+            0x12 => {
+                let index = *code.get(pc).ok_or_else(|| ModExecutionError::UnsupportedInitializer(display_name.to_owned()))? as u16;
+                pc += 1;
+                let value = class.string_constants.get(&index)
+                    .ok_or_else(|| ModExecutionError::UnsupportedInitializer(display_name.to_owned()))?;
+                if stack.len() >= usize::from(initializer.max_stack) {
+                    return Err(ModExecutionError::UnsupportedInitializer(display_name.to_owned()));
+                }
+                stack.push(value.clone());
+            }
+            0x13 => {
+                let bytes = code.get(pc..pc + 2)
+                    .ok_or_else(|| ModExecutionError::UnsupportedInitializer(display_name.to_owned()))?;
+                pc += 2;
+                let index = u16::from_be_bytes([bytes[0], bytes[1]]);
+                let value = class.string_constants.get(&index)
+                    .ok_or_else(|| ModExecutionError::UnsupportedInitializer(display_name.to_owned()))?;
+                if stack.len() >= usize::from(initializer.max_stack) {
+                    return Err(ModExecutionError::UnsupportedInitializer(display_name.to_owned()));
+                }
+                stack.push(value.clone());
+            }
+            0xb8 => {
+                let bytes = code.get(pc..pc + 2)
+                    .ok_or_else(|| ModExecutionError::UnsupportedInitializer(display_name.to_owned()))?;
+                pc += 2;
+                let index = u16::from_be_bytes([bytes[0], bytes[1]]);
+                let method = class.method_references.get(&index)
+                    .ok_or_else(|| ModExecutionError::UnsupportedInitializer(display_name.to_owned()))?;
+                if method.owner != "pomme/api/Pomme"
+                    || method.name != "log"
+                    || method.descriptor != "(Ljava/lang/String;)V"
+                {
+                    return Err(ModExecutionError::UnsupportedInitializer(display_name.to_owned()));
+                }
+                logs.push(stack.pop().ok_or_else(|| ModExecutionError::UnsupportedInitializer(display_name.to_owned()))?);
+            }
+            0xb1 => {
+                if !stack.is_empty() {
+                    return Err(ModExecutionError::UnsupportedInitializer(display_name.to_owned()));
+                }
+                return Ok((instructions, logs));
+            }
+            _ => return Err(ModExecutionError::UnsupportedInitializer(display_name.to_owned())),
+        }
+    }
 }
 
 #[cfg(test)]
