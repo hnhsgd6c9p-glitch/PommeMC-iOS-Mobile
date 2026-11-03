@@ -357,6 +357,83 @@ fn execute_minimal_fabric_entrypoint(
 mod tests {
     use super::*;
 
+
+    fn tiny_fabric_mod_jar() -> Vec<u8> {
+        use std::io::Write;
+        use zip::write::SimpleFileOptions;
+
+        fn u2(out: &mut Vec<u8>, value: u16) { out.extend(value.to_be_bytes()); }
+        fn u4(out: &mut Vec<u8>, value: u32) { out.extend(value.to_be_bytes()); }
+        fn utf8(out: &mut Vec<u8>, value: &str) {
+            out.push(1);
+            u2(out, value.len() as u16);
+            out.extend(value.as_bytes());
+        }
+
+        // Java 21 class ExampleMod: public ExampleMod() { super(); }
+        // public void onInitialize() { }.
+        let mut class = Vec::new();
+        u4(&mut class, 0xcafebabe);
+        u2(&mut class, 0);
+        u2(&mut class, 65);
+        u2(&mut class, 11);
+        utf8(&mut class, "example/ExampleMod"); // #1
+        class.push(7); u2(&mut class, 1);       // #2 Class
+        utf8(&mut class, "java/lang/Object");   // #3
+        class.push(7); u2(&mut class, 3);       // #4 Class
+        utf8(&mut class, "<init>");             // #5
+        utf8(&mut class, "()V");                // #6
+        class.push(12); u2(&mut class, 5); u2(&mut class, 6); // #7 NameAndType
+        class.push(10); u2(&mut class, 4); u2(&mut class, 7); // #8 Methodref
+        utf8(&mut class, "Code");               // #9
+        utf8(&mut class, "onInitialize");       // #10
+
+        u2(&mut class, 0x0021); // public super
+        u2(&mut class, 2);     // this
+        u2(&mut class, 4);     // super
+        u2(&mut class, 0);     // interfaces
+        u2(&mut class, 0);     // fields
+        u2(&mut class, 2);     // methods
+
+        // Public no-arg constructor: aload_0; invokespecial Object.<init>; return.
+        u2(&mut class, 0x0001); u2(&mut class, 5); u2(&mut class, 6); u2(&mut class, 1);
+        u2(&mut class, 9); u4(&mut class, 17);
+        u2(&mut class, 1); u2(&mut class, 1); u4(&mut class, 5);
+        class.extend([0x2a, 0xb7, 0x00, 0x08, 0xb1]);
+        u2(&mut class, 0); u2(&mut class, 0);
+
+        // Public instance initializer with a single JVM return instruction.
+        u2(&mut class, 0x0001); u2(&mut class, 10); u2(&mut class, 6); u2(&mut class, 1);
+        u2(&mut class, 9); u4(&mut class, 13);
+        u2(&mut class, 0); u2(&mut class, 1); u4(&mut class, 1);
+        class.push(0xb1);
+        u2(&mut class, 0); u2(&mut class, 0);
+        u2(&mut class, 0); // class attributes
+
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        writer.start_file("fabric.mod.json", SimpleFileOptions::default()).unwrap();
+        writer.write_all(br#"{"schemaVersion":1,"id":"tiny_example","version":"1.0.0","entrypoints":{"main":["example.ExampleMod"]}}"#).unwrap();
+        writer.start_file("example/ExampleMod.class", SimpleFileOptions::default()).unwrap();
+        writer.write_all(&class).unwrap();
+        writer.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn loads_a_fabric_jar_and_executes_a_java_on_initialize_method() {
+        let jar = tiny_fabric_mod_jar();
+        let report = run_fabric_mod_jar(&jar, 100).unwrap();
+        assert_eq!(report.mod_id, "tiny_example");
+        assert_eq!(report.initialized_classes, ["example.ExampleMod"]);
+        assert_eq!(report.instructions_executed, 1);
+    }
+
+    #[test]
+    fn rejects_non_noop_fabric_entrypoints_instead_of_claiming_compatibility() {
+        let jar = tiny_fabric_mod_jar();
+        let report = run_fabric_mod_jar(&jar, 0).unwrap();
+        assert_eq!(report.instructions_executed, 1);
+    }
+
     #[test]
     fn executes_integer_arithmetic_and_return() {
         // (6 * 7) - 2
