@@ -7,3 +7,7 @@ description = "A Rust-implemented JVM execution runtime for Pomme"
 
 [dependencies]
 thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+zip = { workspace = true }
+pomme-mod = { path = "../pomme-mod" }
