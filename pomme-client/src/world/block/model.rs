@@ -2235,7 +2235,9 @@ fn face_textures_base(
     }
 
     if let Some(p) = get("particle") {
-        return Some(FaceTextures::uniform(&p, tint));
+        // A particle slot is not a face texture. Keep it for break effects,
+        // but only use real model elements/multipart quads for terrain geometry.
+        return Some(FaceTextures::particle_only(&p, tint));
     }
 
     None
@@ -2287,6 +2289,23 @@ mod tests {
 
     fn parse_tints(values: &[serde_json::Value]) -> Result<Vec<ItemTintSource>, String> {
         parse_item_tint_sources(values, &Colormap::fallback())
+    }
+
+    #[test]
+    fn particle_texture_is_not_misclassified_as_block_face_geometry() {
+        for (block, particle) in [
+            ("player_head", "minecraft:block/soul_sand"),
+            ("magenta_bed", "minecraft:block/oak_planks"),
+        ] {
+            let textures = HashMap::from([("particle".to_string(), particle.to_string())]);
+            let faces = build_face_textures(block, &textures).unwrap();
+            assert_eq!(faces.top, particle.rsplit('/').next().unwrap());
+            assert_eq!(
+                faces.particle.as_deref(),
+                Some(particle.rsplit('/').next().unwrap())
+            );
+            assert!(!faces.has_block_geometry, "{block}");
+        }
     }
 
     const DIRS: [Direction; 6] = [

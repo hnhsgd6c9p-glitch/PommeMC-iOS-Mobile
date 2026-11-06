@@ -1880,6 +1880,18 @@ fn mesh_chunk_snapshot(
                         continue;
                     }
 
+                    // Some vanilla blockstate models intentionally contain no
+                    // geometry and expose only a particle texture (beds, heads,
+                    // and other special-rendered blocks). Do not turn that
+                    // particle sprite into a full cube, including at distant LOD.
+                    if !registry.has_block_geometry(state)
+                        && registry.get_baked_model(state).is_none()
+                        && registry.get_multipart_quads(state).is_none()
+                    {
+                        by += step;
+                        continue;
+                    }
+
                     // Section-local base (matching the origin buffer.rs derives), so
                     // vertex positions never pass through absolute f32 world space.
                     let block_pos = [

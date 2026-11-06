@@ -11,7 +11,7 @@ use azalea_registry::Registry as AzaleaRegistry;
 use azalea_registry::builtin::{ItemKind, MobEffect, Potion};
 use serde::{Deserialize, Serialize};
 
-const BLOCK_CACHE_FILE: &str = "block_cache_v4.json";
+const BLOCK_CACHE_FILE: &str = "block_cache_v5.json";
 
 use super::block_state_table::BlockStateTable;
 use super::model;
@@ -50,6 +50,14 @@ pub struct FaceTextures {
     /// used for block-break particles.
     #[serde(default)]
     pub particle: Option<String>,
+    /// False when the source model has only a particle texture and no block
+    /// geometry. Such blocks must not become full cubes of their particle.
+    #[serde(default = "default_block_geometry")]
+    pub has_block_geometry: bool,
+}
+
+fn default_block_geometry() -> bool {
+    true
 }
 
 impl FaceTextures {
@@ -74,11 +82,18 @@ impl FaceTextures {
             side_overlay: side_overlay.map(Into::into),
             tint,
             particle: None,
+            has_block_geometry: true,
         }
     }
 
     pub fn uniform(name: &str, tint: Tint) -> Self {
         Self::new(name, name, name, name, name, name, None, tint)
+    }
+
+    pub fn particle_only(name: &str, tint: Tint) -> Self {
+        let mut textures = Self::uniform(name, tint);
+        textures.has_block_geometry = false;
+        textures
     }
 }
 
@@ -377,6 +392,14 @@ impl<'a> BlockRenderView<'a> {
         self.assets
             .textures
             .get(self.block_state_table.block_state_data(state).id)
+    }
+
+    /// Whether a face-texture fallback represents actual cube geometry.
+    /// Particle-only models are rendered by their block-entity/special path,
+    /// never as a cube filled with the particle sprite.
+    pub(crate) fn has_block_geometry(self, state: BlockState) -> bool {
+        self.get_textures(state)
+            .is_none_or(|textures| textures.has_block_geometry)
     }
 
     pub(crate) fn get_baked_model(self, state: BlockState) -> Option<&'a BakedModel> {
