@@ -88,6 +88,10 @@ pub struct ClassAnalysis {
     pub dynamic_constants: usize,
     pub invokedynamic_constants: usize,
     pub bootstrap_methods: usize,
+    /// String constants keyed by their constant-pool index.
+    pub string_constants: BTreeMap<u16, String>,
+    /// Resolved method references keyed by their constant-pool index.
+    pub method_references: BTreeMap<u16, MethodReference>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -114,6 +118,7 @@ enum CpEntry {
     Empty,
     Utf8(String),
     Class(u16),
+    String(u16),
     NameAndType(u16, u16),
     Ref {
         class: u16,
@@ -214,7 +219,8 @@ pub fn analyze_class(bytes: &[u8]) -> Result<ClassAnalysis, ClassFileError> {
                 i += 1;
                 continue;
             }
-            8 | 19 | 20 => {
+            8 => CpEntry::String(r.u2()?),
+            19 | 20 => {
                 r.skip(2)?;
                 CpEntry::Other
             }
@@ -426,6 +432,19 @@ pub fn analyze_class(bytes: &[u8]) -> Result<ClassAnalysis, ClassFileError> {
         }
     }
     let invokedynamic_sites = opcode_counts.get("invokedynamic").copied().unwrap_or(0);
+    let mut string_constants = BTreeMap::new();
+    let mut method_references = BTreeMap::new();
+    for (index, entry) in cp.iter().enumerate() {
+        match entry {
+            CpEntry::String(utf8_index) => {
+                string_constants.insert(index as u16, utf8(&cp, *utf8_index)?);
+            }
+            CpEntry::Ref { field: false, .. } => {
+                method_references.insert(index as u16, method_ref(&cp, index as u16)?);
+            }
+            _ => {}
+        }
+    }
     Ok(ClassAnalysis {
         minor_version,
         major_version,
@@ -449,6 +468,8 @@ pub fn analyze_class(bytes: &[u8]) -> Result<ClassAnalysis, ClassFileError> {
         dynamic_constants,
         invokedynamic_constants,
         bootstrap_methods,
+        string_constants,
+        method_references,
     })
 }
 

@@ -453,6 +453,12 @@ fn tint_color(
     pack_tint_shifted(color)
 }
 
+// Mobile GPUs share memory bandwidth with the CPU. Keep each frame's upload
+// burst short so the first fully-loaded frame doesn't monopolize the render
+// queue. Desktop keeps the higher streaming throughput.
+#[cfg(target_os = "ios")]
+const MAX_MESH_UPLOADS_PER_FRAME: usize = 8;
+#[cfg(not(target_os = "ios"))]
 const MAX_MESH_UPLOADS_PER_FRAME: usize = 32;
 
 /// Bound on un-drained bulk results: past this, workers block on send (back-
@@ -902,11 +908,21 @@ impl MeshDispatcher {
 
         let queue = Arc::new(MeshQueue::new());
         let claimed = Arc::new(ChunkRing::new(|| AtomicU64::new(0)));
-        // Half the cores, capped. Too many saturated workers starve the
-        // main/render thread during a load burst (frame spikes); the cap trades
-        // some load throughput for that.
+        // Reserve CPU capacity for the game/event and render threads. On iOS,
+        // cap background meshers at three: big.LITTLE cores and shared memory
+        // bandwidth make a large worker pool slower at the moment the spawn
+        // chunks finish compiling. Desktop retains the half-core policy.
         let worker_count = std::thread::available_parallelism()
-            .map(|n| (n.get() / 2).clamp(2, 16))
+            .map(|n| {
+                #[cfg(target_os = "ios")]
+                {
+                    n.get().saturating_sub(2).clamp(1, 3)
+                }
+                #[cfg(not(target_os = "ios"))]
+                {
+                    (n.get() / 2).clamp(2, 16)
+                }
+            })
             .unwrap_or(2);
         let mut workers = Vec::with_capacity(worker_count);
         for _ in 0..worker_count {
