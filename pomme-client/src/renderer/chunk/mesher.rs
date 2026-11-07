@@ -1880,14 +1880,19 @@ fn mesh_chunk_snapshot(
                         continue;
                     }
 
+                    let fluid = matches!(kind, BlockKind::Water | BlockKind::Lava);
                     // Some vanilla blockstate models intentionally contain no
-                    // geometry and expose only a particle texture (beds, heads,
-                    // and other special-rendered blocks). Do not turn that
-                    // particle sprite into a full cube, including at distant LOD.
-                    if !registry.has_block_geometry(state)
-                        && registry.get_baked_model(state).is_none()
-                        && registry.get_multipart_quads(state).is_none()
-                    {
+                    // cube geometry and expose only a particle texture (beds,
+                    // heads, and other special-rendered blocks). Fluids are
+                    // different: vanilla renders them through FluidRenderer,
+                    // not a baked block model, so this guard must never cull
+                    // water/lava before emit_fluid can create their geometry.
+                    if should_skip_missing_model_geometry(
+                        fluid,
+                        registry.has_block_geometry(state),
+                        registry.get_baked_model(state).is_some(),
+                        registry.get_multipart_quads(state).is_some(),
+                    ) {
                         by += step;
                         continue;
                     }
@@ -1907,7 +1912,6 @@ fn mesh_chunk_snapshot(
                         (glam::Vec3::from(block_pos) + model_offset.as_vec3()).to_array();
 
                     let first_vertex = sink.vertices.len();
-                    let fluid = matches!(kind, BlockKind::Water | BlockKind::Lava);
                     if lod > 0 {
                         emit_lod_cube(
                             &mut sink, block_pos, state, snapshot, registry, uv_map, bx, by, bz,
@@ -2204,6 +2208,15 @@ enum BlockKind {
     Water,
     Lava,
     Solid,
+}
+
+fn should_skip_missing_model_geometry(
+    is_fluid: bool,
+    has_block_geometry: bool,
+    has_baked_model: bool,
+    has_multipart_model: bool,
+) -> bool {
+    !is_fluid && !has_block_geometry && !has_baked_model && !has_multipart_model
 }
 
 fn classify_block(block_state_data: &BlockStateData) -> BlockKind {
@@ -2762,9 +2775,31 @@ pub(crate) fn cube_face_geometry(dir: Direction) -> ([[f32; 3]; 4], [[f32; 2]; 4
 mod fluid_height_tests {
     use super::{
         average_fluid_corner_height, fluid_face_occluded_by_self, fluid_face_occluded_by_state,
+        should_skip_missing_model_geometry,
     };
     use crate::world::block::BlockStateTable;
     use crate::world::block::model::Direction;
+
+    #[test]
+    fn particle_only_model_guard_does_not_skip_special_fluid_geometry() {
+        // Water and lava use FluidRenderer-style meshing and commonly have no
+        // baked block model; only non-fluid particle-only blocks are skipped.
+        assert!(!should_skip_missing_model_geometry(
+            true, false, false, false
+        ));
+        assert!(!should_skip_missing_model_geometry(
+            false, true, false, false
+        ));
+        assert!(!should_skip_missing_model_geometry(
+            false, false, true, false
+        ));
+        assert!(!should_skip_missing_model_geometry(
+            false, false, false, true
+        ));
+        assert!(should_skip_missing_model_geometry(
+            false, false, false, false
+        ));
+    }
 
     #[test]
     fn fluid_corner_averaging_matches_vanilla_weighting() {
