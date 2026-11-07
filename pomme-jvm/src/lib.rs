@@ -381,6 +381,23 @@ pub fn run_fabric_mod_jar_with_classpath_and_version(
     fuel_per_entrypoint: u64,
     minecraft_version: &str,
 ) -> Result<ModRunReport, ModExecutionError> {
+    run_fabric_mod_jar_with_client_context(
+        bytes,
+        dependencies,
+        fuel_per_entrypoint,
+        minecraft_version,
+        "",
+    )
+}
+
+/// Execute a mod with read-only Minecraft version and local-user API bridges.
+pub fn run_fabric_mod_jar_with_client_context(
+    bytes: &[u8],
+    dependencies: &[&[u8]],
+    fuel_per_entrypoint: u64,
+    minecraft_version: &str,
+    username: &str,
+) -> Result<ModRunReport, ModExecutionError> {
     if dependencies.len() > 512 {
         return Err(ModExecutionError::InvalidMetadata);
     }
@@ -436,6 +453,7 @@ pub fn run_fabric_mod_jar_with_classpath_and_version(
     let mut runtime = FabricRuntimeState::default();
     runtime.loaded_mod_ids = loaded_mod_ids;
     runtime.minecraft_version = minecraft_version.to_owned();
+    runtime.minecraft_username = username.to_owned();
     for group in supported_groups {
         let Some(entries) = metadata.entrypoints.get(group) else {
             continue;
@@ -783,7 +801,9 @@ struct FabricRuntimeState {
     initialized_classes: BTreeSet<String>,
     object_classes: BTreeMap<u32, String>,
     minecraft_client_id: Option<u32>,
+    minecraft_user_id: Option<u32>,
     minecraft_version: String,
+    minecraft_username: String,
     arrays: BTreeMap<u32, Vec<FabricStackValue>>,
     array_elements: usize,
     logger_objects: BTreeMap<u32, String>,
@@ -2607,6 +2627,41 @@ fn execute_fabric_method(
                     && reference.descriptor == "()Ljava/lang/String;"
                 {
                     stack.push(FabricStackValue::String(runtime.minecraft_version.clone()));
+                    continue;
+                }
+                if runtime.minecraft_client_id == Some(object_id)
+                    && reference.owner == "net/minecraft/client/Minecraft"
+                    && reference.name == "getUser"
+                    && reference.descriptor == "()Lnet/minecraft/client/User;"
+                {
+                    let id = if let Some(id) = runtime.minecraft_user_id {
+                        id
+                    } else {
+                        if runtime.object_classes.len() >= 65_536 {
+                            return Err(ModExecutionError::UnsupportedInitializer(
+                                display_name.to_owned(),
+                            ));
+                        }
+                        let id = runtime.next_object_id;
+                        runtime.next_object_id =
+                            runtime.next_object_id.checked_add(1).ok_or_else(|| {
+                                ModExecutionError::UnsupportedInitializer(display_name.to_owned())
+                            })?;
+                        runtime
+                            .object_classes
+                            .insert(id, "net/minecraft/client/User".to_owned());
+                        runtime.minecraft_user_id = Some(id);
+                        id
+                    };
+                    stack.push(FabricStackValue::Object(id));
+                    continue;
+                }
+                if runtime.minecraft_user_id == Some(object_id)
+                    && reference.owner == "net/minecraft/client/User"
+                    && reference.name == "getName"
+                    && reference.descriptor == "()Ljava/lang/String;"
+                {
+                    stack.push(FabricStackValue::String(runtime.minecraft_username.clone()));
                     continue;
                 }
                 if runtime.fabric_loader_objects.contains(&object_id)

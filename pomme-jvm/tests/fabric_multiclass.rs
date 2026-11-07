@@ -5,7 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use pomme_jvm::{
     ModExecutionError, run_fabric_mod_jar, run_fabric_mod_jar_with_classpath,
-    run_fabric_mod_jar_with_classpath_and_version,
+    run_fabric_mod_jar_with_client_context,
 };
 use pomme_mod::analyze_class;
 use zip::ZipWriter;
@@ -45,6 +45,7 @@ fn compile_fabric_fixture() -> Option<(PathBuf, PathBuf, Vec<u8>)> {
         fixture.join("org/slf4j/LoggerFactory.java"),
         fixture.join("net/fabricmc/loader/api/FabricLoader.java"),
         fixture.join("net/minecraft/client/Minecraft.java"),
+        fixture.join("net/minecraft/client/User.java"),
         fixture.join("example/ExampleMod.java"),
         fixture.join("example/MinecraftVersionProbe.java"),
         fixture.join("example/ClientMod.java"),
@@ -224,7 +225,8 @@ fn loads_and_executes_static_helper_from_a_fabric_nested_jar() {
             "values=12/14",
             "Cross-class Java execution works",
             "client entrypoint executed",
-            "unknown"
+            "unknown",
+            ""
         ],
         "the helper's Pomme bridge call should run through the shared class path"
     );
@@ -238,9 +240,12 @@ fn minecraft_api_bridge_exposes_the_active_game_version() {
     let Some((root, _classes, jar)) = compile_fabric_fixture() else {
         return;
     };
-    let report = run_fabric_mod_jar_with_classpath_and_version(&jar, &[], 10_000, "1.21.1")
-        .expect("execute a client entrypoint using Minecraft.getInstance");
-    assert_eq!(report.logs.last().map(String::as_str), Some("1.21.1"));
+    let report = run_fabric_mod_jar_with_client_context(&jar, &[], 10_000, "1.21.1", "PommePlayer")
+        .expect("execute client entrypoints using Minecraft.getInstance");
+    assert_eq!(
+        &report.logs[report.logs.len() - 2..],
+        ["1.21.1", "PommePlayer"]
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 

@@ -301,7 +301,7 @@ fn resolve_load_order(
 
 /// Inspect the selected version's mods folder, resolve dependencies, then
 /// execute only entrypoints that fit the fuel-bounded JVM subset.
-pub fn initialize_installed(mods_dir: &Path, minecraft_version: &str) {
+pub fn initialize_installed(mods_dir: &Path, minecraft_version: &str, username: &str) {
     let entries = match std::fs::read_dir(mods_dir) {
         Ok(entries) => entries,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
@@ -447,11 +447,12 @@ pub fn initialize_installed(mods_dir: &Path, minecraft_version: &str) {
             .iter()
             .map(|dependency_index| installed[*dependency_index].bytes.as_slice())
             .collect();
-        match pomme_jvm::run_fabric_mod_jar_with_classpath_and_version(
+        match pomme_jvm::run_fabric_mod_jar_with_client_context(
             &item.bytes,
             &dependency_refs,
             250_000,
             minecraft_version,
+            username,
         ) {
             Ok(report) => {
                 tracing::info!(

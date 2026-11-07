@@ -836,6 +836,8 @@ pub struct MainMenu {
     pub active_packs: Vec<crate::resource_pack::PackInfo>,
     pub available_packs: Vec<crate::resource_pack::PackInfo>,
     pub packs_dir: PathBuf,
+    /// Java mods imported for the currently selected Minecraft version.
+    pub mods_dir: PathBuf,
     pub pack_toggle: Option<(String, bool)>,
     pub rescan_packs: bool,
     pub reload_assets: bool,
@@ -869,6 +871,7 @@ impl MainMenu {
         let ping_results: PingResults = Default::default();
         let settings = load_settings(game_dir);
         *key_bindings = settings.key_bindings;
+        let mods_dir = game_dir.join("mods").join(&version);
         let mut menu = Self {
             action_binding: None,
             username,
@@ -999,6 +1002,7 @@ impl MainMenu {
             active_packs: Vec::new(),
             available_packs: Vec::new(),
             packs_dir: game_dir.join("resourcepacks"),
+            mods_dir,
             pack_toggle: None,
             rescan_packs: false,
             reload_assets: false,

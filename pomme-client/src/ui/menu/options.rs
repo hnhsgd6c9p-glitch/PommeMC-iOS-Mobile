@@ -2063,7 +2063,7 @@ impl MainMenu {
             ),
             (
                 94.0,
-                "Restart Pomme after importing to load newly added mods.",
+                "Imported JARs appear below; restart Pomme to attempt loading them.",
             ),
         ] {
             elements.push(MenuElement::Text {
@@ -2079,9 +2079,60 @@ impl MainMenu {
                 centered: true,
             });
         }
+        let mut mod_files: Vec<String> = std::fs::read_dir(&self.mods_dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|entry| {
+                let path = entry.path();
+                path.is_file()
+                    .then(|| {
+                        path.extension()
+                            .is_some_and(|ext| ext.eq_ignore_ascii_case("jar"))
+                    })
+                    .filter(|is_jar| *is_jar)
+                    .map(|_| entry.file_name().to_string_lossy().into_owned())
+            })
+            .collect();
+        mod_files.sort_unstable_by_key(|name| name.to_lowercase());
+        let list_top = chrome.content_top + 118.0 * gs;
+        let row_h = 17.0 * gs;
+        let available_rows =
+            (((chrome.content_bottom - list_top - 64.0 * gs) / row_h).floor() as usize).min(8);
+        if mod_files.is_empty() {
+            elements.push(MenuElement::Text {
+                x: cx,
+                y: list_top + row_h,
+                text: "No .jar files imported for this Minecraft version yet.".into(),
+                scale: fs * 0.85,
+                color: common::COL_DISABLED,
+                centered: true,
+            });
+        } else {
+            for (index, name) in mod_files.iter().take(available_rows).enumerate() {
+                elements.push(MenuElement::Text {
+                    x: cx,
+                    y: list_top + index as f32 * row_h,
+                    text: format!("• {name}"),
+                    scale: fs * 0.82,
+                    color: WHITE,
+                    centered: true,
+                });
+            }
+            if mod_files.len() > available_rows {
+                elements.push(MenuElement::Text {
+                    x: cx,
+                    y: list_top + available_rows as f32 * row_h,
+                    text: format!("…and {} more", mod_files.len() - available_rows),
+                    scale: fs * 0.78,
+                    color: common::COL_DISABLED,
+                    centered: true,
+                });
+            }
+        }
         let btn_w = 190.0 * gs;
         let btn_h = BTN_H * gs;
-        let import_y = (chrome.content_top + chrome.content_bottom) * 0.5;
+        let import_y = chrome.content_bottom - 43.0 * gs;
         let import_hovered = common::push_button(
             &mut elements,
             input.cursor,

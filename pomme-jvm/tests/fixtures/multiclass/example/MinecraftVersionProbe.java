@@ -7,5 +7,6 @@ import pomme.api.Pomme;
 public final class MinecraftVersionProbe implements ClientModInitializer {
     @Override public void onInitializeClient() {
         Pomme.log(Minecraft.getInstance().getLaunchedVersion());
+        Pomme.log(Minecraft.getInstance().getUser().getName());
     }
 }
