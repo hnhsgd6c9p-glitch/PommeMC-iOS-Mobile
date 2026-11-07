@@ -20,6 +20,9 @@ mod entity;
 #[cfg(feature = "test-harness")]
 mod harness;
 mod headless;
+#[cfg(target_os = "ios")]
+mod ios_file_import;
+mod java_mods;
 mod lang;
 mod logging;
 mod mob_effect;

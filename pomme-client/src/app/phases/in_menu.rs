@@ -192,6 +192,22 @@ pub fn update_menu(
             };
         }
         MenuAction::PlayWorld { folder } => return open_world(core, &folder),
+        MenuAction::ImportMods => {
+            if let Err(error) = core.data_dirs.ensure_mods_dir() {
+                tracing::error!("Could not create Java mods folder: {error}");
+            } else {
+                #[cfg(target_os = "ios")]
+                if let Err(error) =
+                    crate::ios_file_import::open_mod_picker(&core.data_dirs.mods_dir)
+                {
+                    tracing::error!("Could not open the iOS mod picker: {error}");
+                }
+                #[cfg(not(target_os = "ios"))]
+                if let Err(error) = open::that_detached(&core.data_dirs.mods_dir) {
+                    tracing::error!("Could not open Java mods folder: {error}");
+                }
+            }
+        }
         MenuAction::ChangeTheme(theme) => {
             gfx.renderer
                 .reload_panorama(&theme.panorama_dir(&core.data_dirs));

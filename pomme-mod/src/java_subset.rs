@@ -44,6 +44,18 @@ pub fn execute_static_i32(
     args: &[i32],
     fuel: u64,
 ) -> Result<i32, JavaSubsetError> {
+    execute_static_i32_with_fuel(class_bytes, method_name, descriptor, args, fuel)
+        .map(|(value, _)| value)
+}
+
+/// Execute a static integer helper and report the amount of fuel consumed.
+pub fn execute_static_i32_with_fuel(
+    class_bytes: &[u8],
+    method_name: &str,
+    descriptor: &str,
+    args: &[i32],
+    fuel: u64,
+) -> Result<(i32, u64), JavaSubsetError> {
     let class = analyze_class(class_bytes)?;
     let method = class
         .methods
@@ -74,6 +86,7 @@ pub fn execute_static_i32(
     locals[..args.len()].copy_from_slice(args);
     let mut stack = Vec::<i32>::with_capacity(method.max_stack as usize);
     let mut pc = 0usize;
+    let initial_fuel = fuel;
     let mut remaining = fuel;
     let code = &method.code;
 
@@ -191,7 +204,7 @@ pub fn execute_static_i32(
                 let offset = read_i16(code, pc)?;
                 pc = branch_target(op_pc, offset, code.len())?;
             }
-            0xac => return pop(&mut stack),
+            0xac => return Ok((pop(&mut stack)?, initial_fuel - remaining)),
             other => return Err(JavaSubsetError::UnsupportedOpcode(other)),
         }
         if pc > code.len() {

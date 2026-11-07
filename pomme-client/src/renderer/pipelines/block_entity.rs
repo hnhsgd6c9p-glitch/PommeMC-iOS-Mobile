@@ -18,6 +18,8 @@ pub struct BlockEntityRenderInfo {
     pub pos: BlockPos,
     pub kind: BlockEntityKind,
     pub yaw: f32,
+    /// Local block-space translation for special wall-mounted models.
+    pub offset: glam::Vec3,
     /// Texture-variant index; the model index is `variant % models.len()`, so
     /// chest variants (material-major, [single, left, right] per material)
     /// fold to their type's model and single-model kinds always use model 0.
@@ -75,6 +77,26 @@ const DYE_COLOR_NAMES: [&str; 16] = [
 const SIGN_WOOD_NAMES: [&str; 12] = [
     "oak", "spruce", "birch", "jungle", "acacia", "dark_oak", "mangrove", "cherry", "pale_oak",
     "bamboo", "crimson", "warped",
+];
+
+const SKULL_NAMES: [&str; 7] = [
+    "skeleton",
+    "wither_skeleton",
+    "zombie",
+    "player",
+    "creeper",
+    "dragon",
+    "piglin",
+];
+
+const SKULL_TEXTURES: &[&[&str]] = &[
+    &["minecraft/textures/entity/skeleton/skeleton.png"],
+    &["minecraft/textures/entity/wither_skeleton/wither_skeleton.png"],
+    &["minecraft/textures/entity/zombie/zombie.png"],
+    &["minecraft/textures/entity/player/wide/steve.png"],
+    &["minecraft/textures/entity/creeper/creeper.png"],
+    &["minecraft/textures/entity/enderdragon/dragon.png"],
+    &["minecraft/textures/entity/piglin/piglin.png"],
 ];
 
 const SIGN_TEXTURES: &[&[&str]] = &[
@@ -198,6 +220,15 @@ pub fn variant_for_block(
             .strip_suffix("_shulker_box")
             .and_then(|s| name_index(&DYE_COLOR_NAMES, s))
             .unwrap_or(16),
+        BlockEntityKind::Skull => {
+            let base = name
+                .strip_suffix("_wall_skull")
+                .or_else(|| name.strip_suffix("_skull"))
+                .or_else(|| name.strip_suffix("_wall_head"))
+                .or_else(|| name.strip_suffix("_head"))
+                .unwrap_or(name);
+            name_index(&SKULL_NAMES, base).unwrap_or(3)
+        }
         BlockEntityKind::Sign => name
             .strip_suffix("_sign")
             .or_else(|| name.strip_suffix("_wall_sign"))
@@ -242,12 +273,34 @@ pub fn yaw_for_block(kind: BlockEntityKind, props: &crate::world::block::PropMap
         // TODO: wall signs have no `rotation` (they use `facing`) and vanilla
         // renders them with a postless model offset against the wall; they
         // currently fall back to the standing model facing south.
-        BlockEntityKind::Sign => props
+        BlockEntityKind::Skull | BlockEntityKind::Sign => props
             .get("rotation")
             .and_then(|s| s.parse::<f32>().ok())
             .map(|r| r * 22.5)
+            .or_else(|| match props.get("facing") {
+                Some("north") => Some(180.0),
+                Some("west") => Some(90.0),
+                Some("east") => Some(270.0),
+                Some("south") => Some(0.0),
+                _ => None,
+            })
             .unwrap_or(0.0),
         _ => 0.0,
+    }
+}
+
+/// Wall skulls sit slightly proud of the supporting face; standing skulls
+/// remain centred. Facing points away from the wall.
+pub fn offset_for_block(kind: BlockEntityKind, props: &crate::world::block::PropMap) -> glam::Vec3 {
+    if kind != BlockEntityKind::Skull {
+        return glam::Vec3::ZERO;
+    }
+    match props.get("facing") {
+        Some("north") => glam::Vec3::new(0.0, 0.0, 0.25),
+        Some("south") => glam::Vec3::new(0.0, 0.0, -0.25),
+        Some("west") => glam::Vec3::new(0.25, 0.0, 0.0),
+        Some("east") => glam::Vec3::new(-0.25, 0.0, 0.0),
+        _ => glam::Vec3::ZERO,
     }
 }
 
@@ -303,6 +356,12 @@ fn kind_definitions() -> Vec<KindDef> {
             models: vec![block_entity_model::bake_sign_model()],
             tex_variants: SIGN_TEXTURES,
             tex_size: 32,
+        },
+        KindDef {
+            kind: BlockEntityKind::Skull,
+            models: vec![block_entity_model::bake_skull_model()],
+            tex_variants: SKULL_TEXTURES,
+            tex_size: 64,
         },
     ]
 }
@@ -456,7 +515,8 @@ impl BlockEntityPipeline {
                 info.pos.y as f64,
                 info.pos.z as f64 + 0.5,
             ) - anchor)
-                .as_vec3();
+                .as_vec3()
+                + info.offset;
             let model_mat = match model.convention {
                 // With the 180 yaw offset and the convention's baked-in flip
                 // this reproduces vanilla's block-entity `scale(1,-1,-1)`.

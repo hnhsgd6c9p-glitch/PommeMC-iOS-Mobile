@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: ios-ipa-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -26,13 +26,22 @@ jobs:
       - name: Set up Rust and cached dependencies
         uses: ./.github/actions/setup-rust
         with:
-          cache-key: ios-ipa
+          cache-key: ios-ipa-fabric
 
       - name: Add iOS device target
         run: rustup target add aarch64-apple-ios
 
-      - name: Install XcodeGen
-        run: brew install xcodegen
+      - name: Set up Java 21 for compiled-Java fixtures
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Test JVM and Java mod runtime
+        run: cargo test -p pomme-jvm -p pomme-mod
+
+      - name: Install XcodeGen and pkg-config
+        run: brew install xcodegen pkg-config
 
       - name: Generate Xcode project
         working-directory: pomme-ios

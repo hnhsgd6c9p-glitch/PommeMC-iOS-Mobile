@@ -4396,6 +4396,7 @@ pub fn update_game(
                     pos: *pos,
                     kind: be.kind,
                     yaw,
+                    offset: block_entity::offset_for_block(be.kind, props),
                     variant,
                     lid_open,
                     light,

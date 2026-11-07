@@ -27,7 +27,7 @@ pub use ir::{
     LocatedInstruction, MethodIr, UnaryCondition, build_control_flow_graph,
     lower_static_i32_method,
 };
-pub use java_subset::{JavaSubsetError, execute_static_i32};
+pub use java_subset::{JavaSubsetError, execute_static_i32, execute_static_i32_with_fuel};
 pub use wasm_runtime::{WasmModRuntime, WasmRuntimeError};
 
 const FABRIC_MANIFEST: &str = "fabric.mod.json";

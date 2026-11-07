@@ -173,8 +173,9 @@ impl MainMenu {
             OptRow::Pair("Skin Customization...", "Music & Sounds..."),
             OptRow::Pair("Video Settings...", "Controls..."),
             OptRow::Pair("Language...", "Chat Settings..."),
-            OptRow::Pair("Resource Packs...", "Accessibility Settings..."),
-            OptRow::Pair("Telemetry Data...", "Credits & Attribution..."),
+            OptRow::Pair("Resource Packs...", "Java Mods..."),
+            OptRow::Pair("Accessibility Settings...", "Telemetry Data..."),
+            OptRow::PairLeft("Credits & Attribution..."),
             OptRow::Big(&pomme_version_label),
         ];
 
@@ -187,6 +188,7 @@ impl MainMenu {
             ("Language...", Screen::OptionsLanguage),
             ("Chat Settings...", Screen::OptionsChatSettings),
             ("Resource Packs...", Screen::OptionsResourcePacks),
+            ("Java Mods...", Screen::OptionsMods),
             ("Accessibility Settings...", Screen::OptionsAccessibility),
             ("Telemetry Data...", Screen::OptionsTelemetry),
             ("Credits & Attribution...", Screen::OptionsCredits),
@@ -2018,6 +2020,94 @@ impl MainMenu {
             action: MenuAction::None,
             cursor_pointer: any_hovered,
             clicked_button: false,
+        }
+    }
+
+    pub(super) fn build_options_mods(
+        &mut self,
+        sw: f32,
+        sh: f32,
+        input: &MenuInput,
+        key_bindings: &KeyBindings,
+    ) -> MainMenuResult {
+        if input.escape {
+            self.set_screen(Screen::Options, key_bindings);
+            return empty_result();
+        }
+        let gs = self.gui_scale(sw, sh);
+        let fs = common::FONT_SIZE * gs;
+        let mut elements = vec![MenuElement::BlurBackground];
+        let chrome = push_screen_chrome(&mut elements, sw, sh, gs, "Java Mods");
+        let cx = sw / 2.0;
+        for (offset, message) in [
+            (
+                42.0,
+                "Import Fabric / Java mod .jar files from the Files app",
+            ),
+            (
+                68.0,
+                "Mods are stored separately for each Minecraft version.",
+            ),
+            (
+                94.0,
+                "Restart Pomme after importing to load newly added mods.",
+            ),
+        ] {
+            elements.push(MenuElement::Text {
+                x: cx,
+                y: chrome.content_top + offset * gs,
+                text: message.into(),
+                scale: if offset == 42.0 { fs } else { fs * 0.85 },
+                color: if offset == 42.0 {
+                    WHITE
+                } else {
+                    common::COL_DISABLED
+                },
+                centered: true,
+            });
+        }
+        let btn_w = 190.0 * gs;
+        let btn_h = BTN_H * gs;
+        let import_y = (chrome.content_top + chrome.content_bottom) * 0.5;
+        let import_hovered = common::push_button(
+            &mut elements,
+            input.cursor,
+            cx - btn_w / 2.0,
+            import_y,
+            btn_w,
+            btn_h,
+            gs,
+            fs,
+            "Import Mod Files...",
+            true,
+        );
+        let mut any_hovered = import_hovered;
+        let mut action = MenuAction::None;
+        if input.clicked && import_hovered {
+            action = MenuAction::ImportMods;
+        }
+        let done_w = 150.0 * gs;
+        let done_hovered = common::push_button(
+            &mut elements,
+            input.cursor,
+            cx - done_w / 2.0,
+            chrome.done_y,
+            done_w,
+            btn_h,
+            gs,
+            fs,
+            "Done",
+            true,
+        );
+        any_hovered |= done_hovered;
+        if input.clicked && done_hovered {
+            self.set_screen(Screen::Options, key_bindings);
+        }
+        MainMenuResult {
+            elements,
+            action,
+            cursor_pointer: any_hovered,
+            clicked_button: input.clicked && (import_hovered || done_hovered),
         }
     }
 

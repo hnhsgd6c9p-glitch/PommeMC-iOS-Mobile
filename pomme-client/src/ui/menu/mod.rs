@@ -223,20 +223,14 @@ fn default_chunk_detail() -> u32 {
 }
 
 fn default_render_distance() -> u32 {
-    if cfg!(target_os = "ios") {
-        16
-    } else {
-        12
-    }
+    if cfg!(target_os = "ios") { 16 } else { 12 }
 }
 
 fn default_pomme_version() -> String {
     pomme_protocol::version::VERSIONS
         .iter()
         .find(|version| crate::net::translate::joinable(version.protocol))
-        .map_or(pomme_protocol::version::NATIVE.name, |version| {
-            version.name
-        })
+        .map_or(pomme_protocol::version::NATIVE.name, |version| version.name)
         .to_owned()
 }
 
@@ -416,6 +410,8 @@ pub enum MenuAction {
     PlayWorld {
         folder: String,
     },
+    /// Ask the platform file picker to import one or more Java mod JARs.
+    ImportMods,
     Quit,
 }
 
@@ -588,6 +584,7 @@ enum Screen {
     OptionsFontSettings,
     OptionsChatSettings,
     OptionsResourcePacks,
+    OptionsMods,
     OptionsAccessibility,
     OptionsTelemetry,
     OptionsCredits,
@@ -612,6 +609,7 @@ impl Screen {
             Self::OptionsFontSettings => Self::OptionsFontSettings,
             Self::OptionsChatSettings => Self::OptionsChatSettings,
             Self::OptionsResourcePacks => Self::OptionsResourcePacks,
+            Self::OptionsMods => Self::OptionsMods,
             Self::OptionsAccessibility => Self::OptionsAccessibility,
             Self::OptionsTelemetry => Self::OptionsTelemetry,
             Self::OptionsCredits => Self::OptionsCredits,
@@ -1305,6 +1303,7 @@ impl MainMenu {
                 | Screen::OptionsFontSettings
                 | Screen::OptionsChatSettings
                 | Screen::OptionsResourcePacks
+                | Screen::OptionsMods
                 | Screen::OptionsAccessibility
                 | Screen::OptionsTelemetry
                 | Screen::OptionsCredits
@@ -1609,6 +1608,7 @@ impl MainMenu {
                 &text_width_fn,
                 key_bindings,
             ),
+            Screen::OptionsMods => self.build_options_mods(screen_w, screen_h, input, key_bindings),
             Screen::OptionsAccessibility => self.build_options_accessibility(
                 screen_w,
                 screen_h,

@@ -27,6 +27,20 @@ pub fn rendered_kind(name: &str) -> Option<BlockEntityKind> {
         // weathering stage only picks the texture.
         s if s.ends_with("copper_chest") => Some(BlockEntityKind::Chest),
         s if s == "shulker_box" || s.ends_with("_shulker_box") => Some(BlockEntityKind::ShulkerBox),
+        "skeleton_skull"
+        | "skeleton_wall_skull"
+        | "wither_skeleton_skull"
+        | "wither_skeleton_wall_skull"
+        | "zombie_head"
+        | "zombie_wall_head"
+        | "player_head"
+        | "player_wall_head"
+        | "creeper_head"
+        | "creeper_wall_head"
+        | "dragon_head"
+        | "dragon_wall_head"
+        | "piglin_head"
+        | "piglin_wall_head" => Some(BlockEntityKind::Skull),
         _ => None,
     }
 }
@@ -40,6 +54,7 @@ fn is_rendered(kind: BlockEntityKind) -> bool {
             | BlockEntityKind::TrappedChest
             | BlockEntityKind::EnderChest
             | BlockEntityKind::ShulkerBox
+            | BlockEntityKind::Skull
     )
 }
 
@@ -75,7 +90,7 @@ pub fn sync_block_entity(
 /// warnings and to detect stale block-entity map entries; the subset the BE
 /// pipeline actually draws is [`rendered_kind`].
 pub fn is_block_entity_block(name: &str) -> bool {
-    rendered_kind(name).is_some() // chests, copper chests, shulker boxes
+    rendered_kind(name).is_some() // chests, copper chests, shulker boxes, skulls
         || matches!(
         name,
         // Signs
@@ -152,5 +167,10 @@ mod tests {
         assert!(!is_block_entity_block("red_bed"));
         assert!(!is_block_entity_block("white_bed"));
         assert!(rendered_kind("red_bed").is_none());
+        assert_eq!(rendered_kind("player_head"), Some(BlockEntityKind::Skull));
+        assert_eq!(
+            rendered_kind("creeper_wall_head"),
+            Some(BlockEntityKind::Skull)
+        );
     }
 }

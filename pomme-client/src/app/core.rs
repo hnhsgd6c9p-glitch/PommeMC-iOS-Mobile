@@ -1057,6 +1057,12 @@ impl AppCore {
         user: UserData,
         window_size: winit::dpi::LogicalSize<u32>,
     ) -> Self {
+        if let Err(error) = data_dirs.ensure_mods_dir() {
+            tracing::warn!("Could not create version-specific Java mods directory: {error}");
+        } else {
+            crate::java_mods::initialize_installed(&data_dirs.mods_dir);
+        }
+
         let resource_packs = ResourcePackManager::new(&data_dirs.game_dir);
 
         let mut input = InputState::new();

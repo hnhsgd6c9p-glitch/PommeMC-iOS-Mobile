@@ -38,6 +38,31 @@ pub fn bake_shulker_box_model() -> BakedEntityModel {
     bake_model(vec![lid, base], 64, 64)
 }
 
+/// A vanilla block skull/head: an 8x8x8 cube centred in the block, with
+/// the standard 64x32 skull atlas layout. Wall placement is handled by the
+/// block-state facing transform in the block-entity pipeline.
+pub fn bake_skull_model() -> BakedEntityModel {
+    let head = EntityPart {
+        name: "head".into(),
+        offset: Vec3::new(8.0, 8.0, 8.0),
+        default_rotation: Vec3::ZERO,
+        cubes: vec![ModelCube {
+            origin: Vec3::new(-4.0, -4.0, -4.0),
+            size: Vec3::new(8.0, 8.0, 8.0),
+            tex_offset: (0, 0),
+            deformation: 0.0,
+            mirror: false,
+        }],
+        parent: None,
+    };
+    let cube = &head.cubes[0];
+    let mut vertices = Vec::new();
+    generate_cube_vertices(cube, 64, 32, FACE_ALL, false, &mut vertices);
+    let count = vertices.len() as u32;
+    BakedEntityModel::new(vec![head], vertices, vec![(0, count)])
+        .with_convention(ModelConvention::BlockYUp)
+}
+
 /// Standing sign, matching vanilla `block/template_sign_rot_0`: a 16x8x1.33
 /// board (one block wide, centered) raised on a 1.33x9.33x1.33 post. Geometry
 /// and UVs are in block-model units (16 = one block); UVs are in 0-16 space so

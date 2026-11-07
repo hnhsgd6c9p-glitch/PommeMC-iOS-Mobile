@@ -26,13 +26,24 @@ export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
 unset LIBRARY_PATH
 
 cd "$PROJECT_DIR/.."
-# shaderc, built for the Mac, keeps using a real Vulkan SDK's copy when there
-# is one; the app links MoltenVK as its Vulkan.
-if [ -n "${VULKAN_SDK:-}" ]; then
-    export SHADERC_LIB_DIR="$VULKAN_SDK/lib"
-fi
-VULKAN_SDK="$(python3 tools/fetch_moltenvk.py "$platform" | tail -n 1)"
-export VULKAN_SDK
+# Keep MoltenVK's linker path separate from VULKAN_SDK. shaderc-sys treats
+# VULKAN_SDK as a full LunarG SDK (including share/vulkan/registry/vk.xml),
+# while this download contains only MoltenVK's libvulkan.a. Point pyronyx at
+# MoltenVK through pkg-config while shaderc-sys builds its host compiler from source.
+MOLTENVK_SDK="$(python3 tools/fetch_moltenvk.py "$platform" | tail -n 1)"
+mkdir -p "$MOLTENVK_SDK/lib/pkgconfig"
+cat > "$MOLTENVK_SDK/lib/pkgconfig/vulkan.pc" <<EOF
+prefix=$MOLTENVK_SDK
+libdir=\${prefix}/lib
+includedir=\${prefix}/include
+Name: Vulkan
+Description: MoltenVK Vulkan implementation for Pomme iOS
+Version: 1.4.2
+Libs: -L\${libdir} -lvulkan
+Cflags: -I\${includedir}
+EOF
+export PKG_CONFIG_PATH="$MOLTENVK_SDK/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+unset VULKAN_SDK SHADERC_LIB_DIR
 cargo build -p pomme-ios --target "$triple" ${release:+"$release"}
 mkdir -p "$app" "$frameworks"
 # Copied only when it changed, so an unchanged build isn't re-signed.
