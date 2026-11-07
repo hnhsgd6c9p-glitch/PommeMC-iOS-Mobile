@@ -71,7 +71,7 @@ impl Face {
 /// Symmetric 6x6 face-to-face connectivity (36 bits): bit `a*6+b` set means a
 /// sightline crosses the section between faces `a` and `b`. A fully-empty
 /// section connects all faces; a fully-solid one connects none.
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub struct VisibilitySet(u64);
 
 impl VisibilitySet {

@@ -1430,12 +1430,20 @@ impl GameState {
     /// section afterwards, which `clear_dropped_meshed` takes back out.
     fn apply_mesh_bookkeeping(&mut self, mesh: &mut ChunkMeshData) {
         let pos = mesh.pos;
+        let mut visibility_changed = false;
         for (si, vis) in std::mem::take(&mut mesh.visibility) {
             let e = self.section_vis_epoch.entry((pos, si)).or_insert(0);
             if mesh.upload_epoch >= *e {
                 *e = mesh.upload_epoch;
-                self.section_vis.insert((pos, si), vis);
+                visibility_changed |= self.section_vis.insert((pos, si), vis) != Some(vis);
             }
+        }
+        if visibility_changed {
+            // The async BFS captured the old section connectivity. Discard its
+            // receiver and recompute; otherwise an edited/opened passage can
+            // remain hidden by a stale mask until the camera moves or chunks load.
+            self.vis_valid = false;
+            self.vis_task = None;
         }
         let meshed = section_bits(mesh.replaced.clone());
         self.mesh_columns.meshed(pos, mesh.content_gen, meshed);

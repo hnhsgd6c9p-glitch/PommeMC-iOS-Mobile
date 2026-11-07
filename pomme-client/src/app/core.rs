@@ -574,6 +574,10 @@ impl GameState {
         }
         self.section_vis.retain(|(p, _), _| *p != pos);
         self.section_vis_epoch.retain(|(p, _), _| *p != pos);
+        // Any in-flight cave-cull walk captured the now-unloaded column.
+        // Drop it and rebuild masks from the current loaded set.
+        self.vis_valid = false;
+        self.vis_task = None;
     }
 
     /// Vanilla `handleMovePlayer`. Returns whether the player moved, for the
