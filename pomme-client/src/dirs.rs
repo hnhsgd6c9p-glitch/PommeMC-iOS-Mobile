@@ -13,7 +13,6 @@ pub struct DataDirs {
     /// Version-specific mod home inside the active profile.
     pub mods_dir: PathBuf,
     pub cache_dir: PathBuf,
-    pub mods_dir: PathBuf,
 }
 
 impl DataDirs {
@@ -38,9 +37,7 @@ impl DataDirs {
             .unwrap_or_else(|| layout.minecraft_versions());
 
         let jar_assets_dir = versions_dir.join(version).join("extracted/assets");
-        let mod_version = pomme_protocol::ProtocolVersion::from_name(version)
-            .map_or("unsupported", |version| version.name);
-        let mods_dir = game_dir.join("mods").join(mod_version);
+        let mods_dir = game_dir.join("mods").join(version);
 
         let indexes_dir = assets_dir.join("indexes");
         let objects_dir = assets_dir.join("objects");
@@ -53,7 +50,6 @@ impl DataDirs {
             jar_assets_dir,
             pomme_assets_dir: layout.pomme_assets(),
             bedrock_assets_dir: layout.bedrock_assets(),
-            mods_dir: game_dir.join("mods").join(version),
             game_dir,
             mods_dir,
             cache_dir: layout.cache(version),
