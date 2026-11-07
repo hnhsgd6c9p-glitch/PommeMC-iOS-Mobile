@@ -663,6 +663,9 @@ pub(crate) fn atlas_texture_names(
     let texture_names = render_assets
         .texture_names()
         .chain(generated_item_textures.iter().copied())
+        // Fluid meshes address these sprites directly rather than through a
+        // baked block model, so they must always be packed into the atlas.
+        .chain(["water_still", "lava_still"])
         .chain(crate::particle::END_ROD_SPRITES)
         .collect();
     (texture_names, generated_item_textures)
@@ -1566,6 +1569,14 @@ fn sprite_transparency(data: &[u8]) -> (bool, bool) {
 mod tests {
     use super::*;
     use crate::test_util::test_temp_dir;
+
+    #[test]
+    fn fluid_sprites_are_always_included_in_the_block_atlas() {
+        let assets = BlockRenderAssets::default();
+        let (names, _) = atlas_texture_names(&assets);
+        assert!(names.contains("water_still"));
+        assert!(names.contains("lava_still"));
+    }
 
     #[test]
     fn texture_ids_find_the_region_their_name_does() {

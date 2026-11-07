@@ -288,7 +288,7 @@ pub enum ModExecutionError {
     MissingReferencedClass(String),
     #[error("class-file analysis failed: {0}")]
     ClassFile(#[from] pomme_mod::ClassFileError),
-    #[error("class {0} is outside the supported Java class-file versions (45..=65)")]
+    #[error("class {0} is outside the accepted Java class-file versions (45..=69)")]
     UnsupportedClassVersion(String),
     #[error("class {0} uses field types or class features outside the supported JVM subset")]
     UnsupportedClassShape(String),
@@ -356,15 +356,30 @@ pub fn run_fabric_mod_jar(
 /// Load and execute the first supported Java Fabric mod from a JAR.
 ///
 /// This milestone intentionally supports the smallest useful Fabric shape:
-/// a Java 21-or-earlier class with no instance fields or static initializer,
-/// a trivial constructor that only invokes Object.<init>, and a public
-/// instance onInitialize()V containing string constants, local reference loads,
-/// static helper calls with String parameters, and the Pomme.log bridge. It is
-/// not general Fabric Loader compatibility.
+/// class-file versions 45..=69 are accepted by the parser, but execution is
+/// limited to the implemented bytecode subset: a trivial constructor, a public
+/// instance onInitialize()V, helper calls, and explicit Pomme/Fabric API
+/// bridges. This is not general JVM or Fabric Loader compatibility.
 pub fn run_fabric_mod_jar_with_classpath(
     bytes: &[u8],
     dependencies: &[&[u8]],
     fuel_per_entrypoint: u64,
+) -> Result<ModRunReport, ModExecutionError> {
+    run_fabric_mod_jar_with_classpath_and_version(
+        bytes,
+        dependencies,
+        fuel_per_entrypoint,
+        "unknown",
+    )
+}
+
+/// Execute a mod with the active Minecraft version exposed through the first
+/// read-only Minecraft client API bridge methods.
+pub fn run_fabric_mod_jar_with_classpath_and_version(
+    bytes: &[u8],
+    dependencies: &[&[u8]],
+    fuel_per_entrypoint: u64,
+    minecraft_version: &str,
 ) -> Result<ModRunReport, ModExecutionError> {
     if dependencies.len() > 512 {
         return Err(ModExecutionError::InvalidMetadata);
@@ -420,6 +435,7 @@ pub fn run_fabric_mod_jar_with_classpath(
     let mut logs = Vec::new();
     let mut runtime = FabricRuntimeState::default();
     runtime.loaded_mod_ids = loaded_mod_ids;
+    runtime.minecraft_version = minecraft_version.to_owned();
     for group in supported_groups {
         let Some(entries) = metadata.entrypoints.get(group) else {
             continue;
@@ -620,7 +636,7 @@ fn load_jar_classes(
             return Err(ModExecutionError::InvalidMetadata);
         }
         let analysis = pomme_mod::analyze_class(&raw)?;
-        if !(45..=65).contains(&analysis.major_version) {
+        if !(45..=69).contains(&analysis.major_version) {
             return Err(ModExecutionError::UnsupportedClassVersion(
                 analysis.name.clone(),
             ));
@@ -650,7 +666,7 @@ fn execute_minimal_fabric_entrypoint(
     let class = classes
         .get(internal_name)
         .ok_or_else(|| ModExecutionError::MissingClass(display_name.to_owned()))?;
-    if !(45..=65).contains(&class.major_version) {
+    if !(45..=69).contains(&class.major_version) {
         return Err(ModExecutionError::UnsupportedClassVersion(
             display_name.to_owned(),
         ));
@@ -766,6 +782,8 @@ struct FabricRuntimeState {
     instance_fields: BTreeMap<(u32, String, String), FabricStackValue>,
     initialized_classes: BTreeSet<String>,
     object_classes: BTreeMap<u32, String>,
+    minecraft_client_id: Option<u32>,
+    minecraft_version: String,
     arrays: BTreeMap<u32, Vec<FabricStackValue>>,
     array_elements: usize,
     logger_objects: BTreeMap<u32, String>,
@@ -1181,7 +1199,7 @@ fn handle_fabric_exception(
     instruction_pc: usize,
     exception_class: &str,
     object_id: u32,
-    display_name: &str,
+    _display_name: &str,
 ) -> Result<(), ModExecutionError> {
     let handler = method.exception_handlers.iter().find(|handler| {
         usize::from(handler.start_pc) <= instruction_pc
@@ -1651,6 +1669,9 @@ fn execute_fabric_method(
                         display_name.to_owned(),
                     ));
                 };
+                let array_type = runtime.object_classes.get(&array_id).ok_or_else(|| {
+                    ModExecutionError::UnsupportedInitializer(display_name.to_owned())
+                })?;
                 let value = runtime
                     .arrays
                     .get(&array_id)
@@ -1663,19 +1684,37 @@ fn execute_fabric_method(
                     .ok_or_else(|| {
                         ModExecutionError::UnsupportedInitializer(display_name.to_owned())
                     })?;
-                if (opcode == 0x2e && !matches!(value, FabricStackValue::Int(_)))
-                    || (opcode == 0x32
-                        && !matches!(
-                            value,
-                            FabricStackValue::Object(_)
-                                | FabricStackValue::String(_)
-                                | FabricStackValue::Null
-                        ))
-                {
-                    return Err(ModExecutionError::UnsupportedInitializer(
-                        display_name.to_owned(),
-                    ));
-                }
+                let value = match (opcode, array_type.as_str(), value) {
+                    (0x2e, "[I", FabricStackValue::Int(value)) => FabricStackValue::Int(value),
+                    (0x32, ty, value)
+                        if (ty.starts_with("[L") || ty.starts_with("[["))
+                            && matches!(
+                                value,
+                                FabricStackValue::Object(_)
+                                    | FabricStackValue::String(_)
+                                    | FabricStackValue::Null
+                            ) =>
+                    {
+                        value
+                    }
+                    (0x33, "[B", FabricStackValue::Int(value)) => {
+                        FabricStackValue::Int(i32::from(value as i8))
+                    }
+                    (0x33, "[Z", FabricStackValue::Int(value)) => {
+                        FabricStackValue::Int(i32::from(value != 0))
+                    }
+                    (0x34, "[C", FabricStackValue::Int(value)) => {
+                        FabricStackValue::Int(i32::from(value as u16))
+                    }
+                    (0x35, "[S", FabricStackValue::Int(value)) => {
+                        FabricStackValue::Int(i32::from(value as i16))
+                    }
+                    _ => {
+                        return Err(ModExecutionError::UnsupportedInitializer(
+                            display_name.to_owned(),
+                        ));
+                    }
+                };
                 stack.push(value);
             }
             0x4f | 0x53 | 0x54 | 0x55 | 0x56 => {
@@ -1692,21 +1731,45 @@ fn execute_fabric_method(
                         display_name.to_owned(),
                     ));
                 };
-                let valid = match opcode {
-                    0x4f | 0x54 | 0x55 | 0x56 => matches!(value, FabricStackValue::Int(_)),
-                    0x53 => matches!(
-                        value,
-                        FabricStackValue::Object(_)
-                            | FabricStackValue::String(_)
-                            | FabricStackValue::Null
-                    ),
-                    _ => false,
+                let array_type =
+                    runtime
+                        .object_classes
+                        .get(&array_id)
+                        .cloned()
+                        .ok_or_else(|| {
+                            ModExecutionError::UnsupportedInitializer(display_name.to_owned())
+                        })?;
+                let value = match (opcode, array_type.as_str(), value) {
+                    (0x4f, "[I", FabricStackValue::Int(value)) => FabricStackValue::Int(value),
+                    (0x53, ty, value)
+                        if (ty.starts_with("[L") || ty.starts_with("[["))
+                            && matches!(
+                                value,
+                                FabricStackValue::Object(_)
+                                    | FabricStackValue::String(_)
+                                    | FabricStackValue::Null
+                            ) =>
+                    {
+                        value
+                    }
+                    (0x54, "[B", FabricStackValue::Int(value)) => {
+                        FabricStackValue::Int(i32::from(value as i8))
+                    }
+                    (0x54, "[Z", FabricStackValue::Int(value)) => {
+                        FabricStackValue::Int(i32::from(value != 0))
+                    }
+                    (0x55, "[C", FabricStackValue::Int(value)) => {
+                        FabricStackValue::Int(i32::from(value as u16))
+                    }
+                    (0x56, "[S", FabricStackValue::Int(value)) => {
+                        FabricStackValue::Int(i32::from(value as i16))
+                    }
+                    _ => {
+                        return Err(ModExecutionError::UnsupportedInitializer(
+                            display_name.to_owned(),
+                        ));
+                    }
                 };
-                if !valid {
-                    return Err(ModExecutionError::UnsupportedInitializer(
-                        display_name.to_owned(),
-                    ));
-                }
                 let slot = runtime
                     .arrays
                     .get_mut(&array_id)
@@ -1742,7 +1805,10 @@ fn execute_fabric_method(
                     })?;
                     pc += 1;
                     match atype {
-                        4 | 5 | 8 | 9 => "[I".to_owned(),
+                        4 => "[Z".to_owned(),
+                        5 => "[C".to_owned(),
+                        8 => "[B".to_owned(),
+                        9 => "[S".to_owned(),
                         10 => "[I".to_owned(),
                         _ => {
                             return Err(ModExecutionError::UnsupportedInitializer(
@@ -1780,10 +1846,10 @@ fn execute_fabric_method(
                     runtime.next_object_id.checked_add(1).ok_or_else(|| {
                         ModExecutionError::UnsupportedInitializer(display_name.to_owned())
                     })?;
-                let initial = if array_type == "[I" {
-                    FabricStackValue::Int(0)
-                } else {
+                let initial = if array_type.starts_with("[L") || array_type.starts_with("[[") {
                     FabricStackValue::Null
+                } else {
+                    FabricStackValue::Int(0)
                 };
                 runtime.array_elements += length as usize;
                 runtime
@@ -1791,6 +1857,19 @@ fn execute_fabric_method(
                     .insert(array_id, vec![initial; length as usize]);
                 runtime.object_classes.insert(array_id, array_type);
                 stack.push(FabricStackValue::Object(array_id));
+            }
+            0x91..=0x93 => {
+                let Some(FabricStackValue::Int(value)) = stack.pop() else {
+                    return Err(ModExecutionError::UnsupportedInitializer(
+                        display_name.to_owned(),
+                    ));
+                };
+                let converted = match opcode {
+                    0x91 => i32::from(value as i8),
+                    0x92 => i32::from(value as u16),
+                    _ => i32::from(value as i16),
+                };
+                stack.push(FabricStackValue::Int(converted));
             }
             0x74 => {
                 let Some(FabricStackValue::Int(value)) = stack.pop() else {
@@ -2254,6 +2333,32 @@ fn execute_fabric_method(
                 let reference = class.method_references.get(&index).ok_or_else(|| {
                     ModExecutionError::UnsupportedInitializer(display_name.to_owned())
                 })?;
+                if reference.owner == "net/minecraft/client/Minecraft"
+                    && reference.name == "getInstance"
+                    && reference.descriptor == "()Lnet/minecraft/client/Minecraft;"
+                {
+                    let id = if let Some(id) = runtime.minecraft_client_id {
+                        id
+                    } else {
+                        if runtime.object_classes.len() >= 65_536 {
+                            return Err(ModExecutionError::UnsupportedInitializer(
+                                display_name.to_owned(),
+                            ));
+                        }
+                        let id = runtime.next_object_id;
+                        runtime.next_object_id =
+                            runtime.next_object_id.checked_add(1).ok_or_else(|| {
+                                ModExecutionError::UnsupportedInitializer(display_name.to_owned())
+                            })?;
+                        runtime
+                            .object_classes
+                            .insert(id, "net/minecraft/client/Minecraft".to_owned());
+                        runtime.minecraft_client_id = Some(id);
+                        id
+                    };
+                    stack.push(FabricStackValue::Object(id));
+                    continue;
+                }
                 if reference.owner == "pomme/api/Pomme"
                     && reference.name == "log"
                     && reference.descriptor == "(Ljava/lang/String;)V"
@@ -2494,6 +2599,14 @@ fn execute_fabric_method(
                     && reference.descriptor == "()Z"
                 {
                     stack.push(FabricStackValue::Int(0));
+                    continue;
+                }
+                if runtime.minecraft_client_id == Some(object_id)
+                    && reference.owner == "net/minecraft/client/Minecraft"
+                    && reference.name == "getLaunchedVersion"
+                    && reference.descriptor == "()Ljava/lang/String;"
+                {
+                    stack.push(FabricStackValue::String(runtime.minecraft_version.clone()));
                     continue;
                 }
                 if runtime.fabric_loader_objects.contains(&object_id)

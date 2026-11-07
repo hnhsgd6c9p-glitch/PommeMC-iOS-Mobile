@@ -85,6 +85,12 @@ pub fn update_menu(
     gfx: &mut Gfx,
     panorama: &mut Panorama,
 ) -> MenuUpdateResult {
+    #[cfg(target_os = "ios")]
+    if crate::ios_file_import::take_resource_pack_import_completed() {
+        core.menu.rescan_packs = true;
+        core.menu.reload_assets = true;
+    }
+
     panorama.update(dt);
 
     core.audio.start_menu_music();
@@ -192,6 +198,22 @@ pub fn update_menu(
             };
         }
         MenuAction::PlayWorld { folder } => return open_world(core, &folder),
+        MenuAction::ImportResourcePacks => {
+            if let Err(error) = std::fs::create_dir_all(&core.menu.packs_dir) {
+                tracing::error!("Could not create resource packs folder: {error}");
+            } else {
+                #[cfg(target_os = "ios")]
+                if let Err(error) =
+                    crate::ios_file_import::open_resource_pack_picker(&core.menu.packs_dir)
+                {
+                    tracing::error!("Could not open the iOS resource-pack picker: {error}");
+                }
+                #[cfg(not(target_os = "ios"))]
+                if let Err(error) = open::that_detached(&core.menu.packs_dir) {
+                    tracing::error!("Could not open resource packs folder: {error}");
+                }
+            }
+        }
         MenuAction::ImportMods => {
             if let Err(error) = core.data_dirs.ensure_mods_dir() {
                 tracing::error!("Could not create Java mods folder: {error}");

@@ -39,6 +39,7 @@ targets:
       base:
         PRODUCT_NAME: Pomme
         PRODUCT_BUNDLE_IDENTIFIER: com.pommemc.client
+        SUPPORTED_PLATFORMS: "iphoneos iphonesimulator"
         TARGETED_DEVICE_FAMILY: "1,2"
         CODE_SIGN_STYLE: Automatic
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

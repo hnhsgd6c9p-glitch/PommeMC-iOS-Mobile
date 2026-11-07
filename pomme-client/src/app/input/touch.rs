@@ -533,18 +533,18 @@ mod tests {
         let p = Vec2::new(300.0, 200.0);
         assert_eq!(
             c.on_touch(1, TouchPhase::Started, p, false, &LAYOUT, t),
-            [TouchOutput::PointerMove(p)]
+            [TouchOutput::PointerMove(p), TouchOutput::PointerDown]
         );
         assert_eq!(
             c.on_touch(1, TouchPhase::Ended, p, false, &LAYOUT, ms(t, 50)),
-            [TouchOutput::PointerDown, TouchOutput::PointerUp]
+            [TouchOutput::PointerUp]
         );
 
         c.on_touch(2, TouchPhase::Started, p, false, &LAYOUT, t);
         let moved = p + Vec2::new(0.0, -40.0);
         assert_eq!(
             c.on_touch(2, TouchPhase::Moved, moved, false, &LAYOUT, ms(t, 50)),
-            [TouchOutput::MenuScroll(20.0)]
+            [TouchOutput::PointerUp, TouchOutput::MenuScroll(20.0)]
         );
         assert!(
             c.on_touch(2, TouchPhase::Ended, moved, false, &LAYOUT, ms(t, 100))
@@ -558,11 +558,11 @@ mod tests {
         let p = Vec2::new(300.0, 200.0);
         assert_eq!(
             c.on_touch(1, TouchPhase::Started, p, false, &LAYOUT, t),
-            [TouchOutput::PointerMove(p)]
+            [TouchOutput::PointerMove(p), TouchOutput::PointerDown]
         );
         assert_eq!(
             c.on_touch(1, TouchPhase::Ended, p, false, &LAYOUT, t),
-            [TouchOutput::PointerDown, TouchOutput::PointerUp]
+            [TouchOutput::PointerUp]
         );
     }
 }

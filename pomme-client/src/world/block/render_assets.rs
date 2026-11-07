@@ -105,6 +105,15 @@ struct StateRender {
     hidden_when_enclosed: bool,
 }
 
+fn ensure_fluid_texture_defaults(textures: &mut HashMap<String, FaceTextures>) {
+    textures
+        .entry("water".into())
+        .or_insert_with(|| FaceTextures::uniform("water_still", Tint::None));
+    textures
+        .entry("lava".into())
+        .or_insert_with(|| FaceTextures::uniform("lava_still", Tint::None));
+}
+
 #[derive(Default)]
 pub struct BlockRenderAssets {
     textures: HashMap<String, FaceTextures>,
@@ -177,15 +186,8 @@ impl BlockRenderAssets {
             );
         }
 
-        let textures = textures.unwrap_or_else(|| {
-            let mut textures = model::load_all_block_textures(jar_assets_dir, asset_index, packs);
-
-            textures
-                .entry("water".into())
-                .or_insert_with(|| FaceTextures::uniform("water_still", Tint::None));
-            textures
-                .entry("lava".into())
-                .or_insert_with(|| FaceTextures::uniform("lava_still", Tint::None));
+        let mut textures = textures.unwrap_or_else(|| {
+            let textures = model::load_all_block_textures(jar_assets_dir, asset_index, packs);
 
             if let Some(path) = &cache_path {
                 save_cache(path, &textures);
@@ -193,6 +195,9 @@ impl BlockRenderAssets {
             tracing::info!("Block render assets: {} blocks (built)", textures.len());
             textures
         });
+        // Fluid fallback textures must be present on cache hits too; otherwise
+        // the water/lava mesh can reference a sprite absent from the atlas.
+        ensure_fluid_texture_defaults(&mut textures);
 
         let (baked, multipart) = model::bake_all_models(jar_assets_dir, asset_index, packs);
         let baked_items = model::bake_item_models(jar_assets_dir, asset_index, packs);
@@ -715,5 +720,20 @@ mod tint_tests {
         ] {
             assert_eq!(evaluate_item_tint(&source, None, None), 0xFF112233);
         }
+    }
+}
+
+#[cfg(test)]
+mod fluid_texture_tests {
+    use super::{FaceTextures, Tint, ensure_fluid_texture_defaults};
+
+    #[test]
+    fn fluid_sprite_defaults_are_added_even_when_block_textures_come_from_cache() {
+        let mut cached_textures = std::collections::HashMap::<String, FaceTextures>::new();
+        ensure_fluid_texture_defaults(&mut cached_textures);
+
+        assert_eq!(cached_textures["water"].top, "water_still");
+        assert_eq!(cached_textures["lava"].top, "lava_still");
+        assert_eq!(cached_textures["water"].tint, Tint::None);
     }
 }

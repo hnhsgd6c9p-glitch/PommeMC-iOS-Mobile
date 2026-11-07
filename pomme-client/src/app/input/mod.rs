@@ -907,7 +907,9 @@ impl InputState {
         {
             // UIKit's Return key arrives through `UIKeyInput.insertText` as
             // a newline character, with no physical KeyCode on iOS.
-            if text.contains(['\n', '\r']) {
+            if text.contains(['\n', '\r'])
+                && !code.is_some_and(|code| self.key_bindings.matches_key(Action::Close, code))
+            {
                 self.enter_pressed = true;
             }
             for ch in text.chars() {

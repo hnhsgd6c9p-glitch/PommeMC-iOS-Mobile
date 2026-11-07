@@ -1060,7 +1060,7 @@ impl AppCore {
         if let Err(error) = data_dirs.ensure_mods_dir() {
             tracing::warn!("Could not create version-specific Java mods directory: {error}");
         } else {
-            crate::java_mods::initialize_installed(&data_dirs.mods_dir);
+            crate::java_mods::initialize_installed(&data_dirs.mods_dir, &version);
         }
 
         let resource_packs = ResourcePackManager::new(&data_dirs.game_dir);

@@ -5,6 +5,15 @@ public final class ArrayFixture {
         messages[0] = "array reference works";
         pomme.api.Pomme.log(messages[0]);
     }
+    public static void logByteArray() {
+        byte[] values = new byte[1];
+        values[0] = (byte) 255;
+        pomme.api.Pomme.logInt(isByteArray(values));
+        pomme.api.Pomme.logInt(values[0]);
+    }
+    public static int isByteArray(Object value) {
+        return value instanceof byte[] ? 1 : 0;
+    }
     public static int sum(int[] values) {
         int total = 0;
         for (int index = 0; index < values.length; index++) {

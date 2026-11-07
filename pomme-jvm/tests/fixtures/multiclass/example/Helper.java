@@ -35,6 +35,7 @@ public final class Helper {
         Pomme.logInt(ArrayFixture.caughtArithmetic(0));
         Pomme.logInt(ArrayFixture.arithmetic(5));
         ArrayFixture.logReferenceArray();
+        ArrayFixture.logByteArray();
     }
     public static void logStartupValue() {
         Pomme.logInt(ExampleMod.startupValue);

@@ -1,3 +1,4 @@
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 pub const CURRENT_PACK_FORMAT: u32 = 84;
@@ -36,6 +37,70 @@ pub struct ResourcePackManager {
     server_cache_dir: PathBuf,
     active_packs: Vec<ActivePack>,
     available_local: Vec<PackInfo>,
+}
+
+/// Copy a validated resource-pack ZIP into the active profile's resourcepacks
+/// folder. Existing files are preserved by selecting a numbered filename
+/// suffix.
+pub fn import_local_pack_file(source: &Path, packs_dir: &Path) -> std::io::Result<PathBuf> {
+    if !source
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("zip"))
+    {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Only .zip files can be imported as resource packs",
+        ));
+    }
+
+    let file = std::fs::File::open(source)?;
+    let mut archive = zip::ZipArchive::new(file)
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error.to_string()))?;
+    let mut metadata = archive
+        .by_name("pack.mcmeta")
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error.to_string()))?;
+    if metadata.size() > 1024 * 1024 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "Resource pack metadata exceeds the 1 MiB import limit",
+        ));
+    }
+    let mut contents = String::new();
+    metadata.read_to_string(&mut contents)?;
+    let value: serde_json::Value = serde_json::from_str(&contents)
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error.to_string()))?;
+    if !value.get("pack").is_some_and(serde_json::Value::is_object) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "Resource pack metadata is missing its pack object",
+        ));
+    }
+    drop(metadata);
+    drop(archive);
+
+    std::fs::create_dir_all(packs_dir)?;
+    let file_name = source.file_name().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Selected file has no name",
+        )
+    })?;
+    let destination = packs_dir.join(file_name);
+    let destination = if !destination.exists() {
+        destination
+    } else {
+        let stem = source
+            .file_stem()
+            .and_then(|name| name.to_str())
+            .unwrap_or("pack");
+        (2..=999)
+            .map(|number| packs_dir.join(format!("{stem} ({number}).zip")))
+            .find(|candidate| !candidate.exists())
+            .ok_or_else(|| std::io::Error::other("Too many files with this resource-pack name"))?
+    };
+    std::fs::copy(source, &destination)?;
+    Ok(destination)
 }
 
 impl ResourcePackManager {
@@ -448,4 +513,71 @@ fn extract_zip(data: &[u8], dest: &Path) -> Result<(), PackError> {
 
     tracing::info!("Extracted resource pack to {}", dest.display());
     Ok(())
+}
+
+#[cfg(test)]
+mod import_tests {
+    use std::io::Write;
+
+    use zip::write::SimpleFileOptions;
+
+    use super::import_local_pack_file;
+
+    fn write_pack_zip(path: &std::path::Path) {
+        let file = std::fs::File::create(path).unwrap();
+        let mut archive = zip::ZipWriter::new(file);
+        archive
+            .start_file("pack.mcmeta", SimpleFileOptions::default())
+            .unwrap();
+        archive
+            .write_all(br#"{"pack":{"pack_format":84,"description":"Import test"}}"#)
+            .unwrap();
+        archive.finish().unwrap();
+    }
+
+    #[test]
+    fn imports_valid_resource_pack_zip_and_preserves_duplicate_names() {
+        let root = crate::test_util::test_temp_dir("resource_pack_import");
+        let source_dir = root.join("source");
+        let packs_dir = root.join("profile/resourcepacks");
+        std::fs::create_dir_all(&source_dir).unwrap();
+        let source = source_dir.join("Example.zip");
+        write_pack_zip(&source);
+
+        let first = import_local_pack_file(&source, &packs_dir).unwrap();
+        let second = import_local_pack_file(&source, &packs_dir).unwrap();
+
+        assert_eq!(first.file_name().unwrap(), "Example.zip");
+        assert_eq!(second.file_name().unwrap(), "Example (2).zip");
+        assert!(first.is_file());
+        assert!(second.is_file());
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn rejects_non_zip_and_zip_without_pack_metadata() {
+        let root = crate::test_util::test_temp_dir("resource_pack_invalid_import");
+        std::fs::create_dir_all(&root).unwrap();
+        let wrong_extension = root.join("pack.jar");
+        std::fs::write(&wrong_extension, b"not a pack").unwrap();
+        assert_eq!(
+            import_local_pack_file(&wrong_extension, &root)
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::InvalidInput
+        );
+
+        let invalid_zip = root.join("empty.zip");
+        let file = std::fs::File::create(&invalid_zip).unwrap();
+        zip::ZipWriter::new(file).finish().unwrap();
+        assert_eq!(
+            import_local_pack_file(&invalid_zip, &root)
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::InvalidData
+        );
+
+        let _ = std::fs::remove_dir_all(root);
+    }
 }

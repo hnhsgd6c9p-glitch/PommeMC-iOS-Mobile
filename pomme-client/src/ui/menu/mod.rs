@@ -412,6 +412,8 @@ pub enum MenuAction {
     },
     /// Ask the platform file picker to import one or more Java mod JARs.
     ImportMods,
+    /// Ask the platform file picker to import resource-pack ZIP archives.
+    ImportResourcePacks,
     Quit,
 }
 

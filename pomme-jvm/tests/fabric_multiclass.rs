@@ -3,7 +3,10 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use pomme_jvm::{ModExecutionError, run_fabric_mod_jar, run_fabric_mod_jar_with_classpath};
+use pomme_jvm::{
+    ModExecutionError, run_fabric_mod_jar, run_fabric_mod_jar_with_classpath,
+    run_fabric_mod_jar_with_classpath_and_version,
+};
 use pomme_mod::analyze_class;
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
@@ -41,7 +44,9 @@ fn compile_fabric_fixture() -> Option<(PathBuf, PathBuf, Vec<u8>)> {
         fixture.join("org/slf4j/Logger.java"),
         fixture.join("org/slf4j/LoggerFactory.java"),
         fixture.join("net/fabricmc/loader/api/FabricLoader.java"),
+        fixture.join("net/minecraft/client/Minecraft.java"),
         fixture.join("example/ExampleMod.java"),
+        fixture.join("example/MinecraftVersionProbe.java"),
         fixture.join("example/ClientMod.java"),
         fixture.join("example/PreLaunchMod.java"),
         fixture.join("example/Helper.java"),
@@ -73,7 +78,7 @@ fn compile_fabric_fixture() -> Option<(PathBuf, PathBuf, Vec<u8>)> {
         .expect("start Fabric metadata");
     writer
         .write_all(
-            br#"{"schemaVersion":1,"id":"multiclass_fixture","version":"1.0.0","entrypoints":{"preLaunch":["example.PreLaunchMod"],"main":[{"value":"example.ExampleMod","adapter":"default"}],"client":[{"value":"example.ServerOnly","environment":"server"},{"value":"example.ClientMod","environment":"client"}],"server":["example.ServerOnly"]},"jars":[{"file":"META-INF/jars/helper.jar"}]}"#,
+            br#"{"schemaVersion":1,"id":"multiclass_fixture","version":"1.0.0","entrypoints":{"preLaunch":["example.PreLaunchMod"],"main":[{"value":"example.ExampleMod","adapter":"default"}],"client":[{"value":"example.ServerOnly","environment":"server"},{"value":"example.ClientMod","environment":"client"},{"value":"example.MinecraftVersionProbe","environment":"client"}],"server":["example.ServerOnly"]},"jars":[{"file":"META-INF/jars/helper.jar"}]}"#,
         )
         .expect("write Fabric metadata");
 
@@ -81,6 +86,7 @@ fn compile_fabric_fixture() -> Option<(PathBuf, PathBuf, Vec<u8>)> {
         "example/ExampleMod.class",
         "example/ClientMod.class",
         "example/PreLaunchMod.class",
+        "example/MinecraftVersionProbe.class",
         "net/fabricmc/api/ModInitializer.class",
         "net/fabricmc/api/ClientModInitializer.class",
         "net/fabricmc/loader/api/entrypoint/PreLaunchEntrypoint.class",
@@ -176,7 +182,8 @@ fn loads_and_executes_static_helper_from_a_fabric_nested_jar() {
         [
             "example.PreLaunchMod",
             "example.ExampleMod",
-            "example.ClientMod"
+            "example.ClientMod",
+            "example.MinecraftVersionProbe"
         ]
     );
     assert_eq!(
@@ -200,6 +207,8 @@ fn loads_and_executes_static_helper_from_a_fabric_nested_jar() {
             "99",
             "4",
             "array reference works",
+            "1",
+            "-1",
             "first",
             "second",
             "10",
@@ -214,12 +223,24 @@ fn loads_and_executes_static_helper_from_a_fabric_nested_jar() {
             "14",
             "values=12/14",
             "Cross-class Java execution works",
-            "client entrypoint executed"
+            "client entrypoint executed",
+            "unknown"
         ],
         "the helper's Pomme bridge call should run through the shared class path"
     );
     assert!(report.instructions_executed >= 10);
 
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn minecraft_api_bridge_exposes_the_active_game_version() {
+    let Some((root, _classes, jar)) = compile_fabric_fixture() else {
+        return;
+    };
+    let report = run_fabric_mod_jar_with_classpath_and_version(&jar, &[], 10_000, "1.21.1")
+        .expect("execute a client entrypoint using Minecraft.getInstance");
+    assert_eq!(report.logs.last().map(String::as_str), Some("1.21.1"));
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -315,6 +336,8 @@ fn resolves_classes_from_an_initialized_separate_dependency_mod() {
             "99",
             "4",
             "array reference works",
+            "1",
+            "-1",
             "first",
             "second",
             "10",

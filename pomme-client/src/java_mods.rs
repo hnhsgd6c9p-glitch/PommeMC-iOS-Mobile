@@ -97,10 +97,14 @@ fn version_matches(version: &str, requirement: &str) -> bool {
         )
     });
     if !is_range {
+        let short_minor_requirement = requirement.matches('.').count() == 1;
         return match (
             parse_fabric_version(version),
             parse_fabric_version(requirement),
         ) {
+            (Some(version), Some(required)) if short_minor_requirement => {
+                version.major == required.major && version.minor == required.minor
+            }
             (Some(version), Some(required)) => version == required,
             _ => version == requirement,
         };
@@ -297,7 +301,7 @@ fn resolve_load_order(
 
 /// Inspect the selected version's mods folder, resolve dependencies, then
 /// execute only entrypoints that fit the fuel-bounded JVM subset.
-pub fn initialize_installed(mods_dir: &Path) {
+pub fn initialize_installed(mods_dir: &Path, minecraft_version: &str) {
     let entries = match std::fs::read_dir(mods_dir) {
         Ok(entries) => entries,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
@@ -385,11 +389,11 @@ pub fn initialize_installed(mods_dir: &Path) {
         .iter()
         .map(|item| ModDescriptor::from(&item.metadata))
         .collect();
-    let minecraft_version = mods_dir
+    let selected_mod_version = mods_dir
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or("unknown");
-    let (order, blocked) = resolve_load_order(&descriptors, minecraft_version);
+    let (order, blocked) = resolve_load_order(&descriptors, selected_mod_version);
     for (index, reason) in blocked {
         tracing::warn!(
             "Skipping Java mod {}: {reason}",
@@ -443,7 +447,12 @@ pub fn initialize_installed(mods_dir: &Path) {
             .iter()
             .map(|dependency_index| installed[*dependency_index].bytes.as_slice())
             .collect();
-        match pomme_jvm::run_fabric_mod_jar_with_classpath(&item.bytes, &dependency_refs, 250_000) {
+        match pomme_jvm::run_fabric_mod_jar_with_classpath_and_version(
+            &item.bytes,
+            &dependency_refs,
+            250_000,
+            minecraft_version,
+        ) {
             Ok(report) => {
                 tracing::info!(
                     "Loaded experimental Java mod {} from {} ({} class(es))",

@@ -40,6 +40,12 @@ jobs:
       - name: Test JVM and Java mod runtime
         run: cargo test -p pomme-jvm -p pomme-mod
 
+      - name: Run Pomme client regression suite
+        run: cargo test -p pomme-client --lib
+
+      - name: Check iOS Rust target
+        run: cargo check --target aarch64-apple-ios -p pomme-client --lib
+
       - name: Install XcodeGen and pkg-config
         run: brew install xcodegen pkg-config cmake
 

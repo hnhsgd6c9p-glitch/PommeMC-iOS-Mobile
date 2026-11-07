@@ -1980,6 +1980,12 @@ impl MainMenu {
         elements.push(MenuElement::ScissorPop);
 
         let btn_w = 150.0 * gs;
+        #[allow(unused_mut)]
+        let mut action = MenuAction::None;
+        #[cfg(target_os = "ios")]
+        let pack_button_label = "Import Pack Files...";
+        #[cfg(not(target_os = "ios"))]
+        let pack_button_label = "Open Pack Folder";
         let h = common::push_button(
             &mut elements,
             cursor,
@@ -1989,12 +1995,19 @@ impl MainMenu {
             btn_h,
             gs,
             fs,
-            "Open Pack Folder",
+            pack_button_label,
             true,
         );
         any_hovered |= h;
         if clicked && h {
-            let _ = open::that_detached(&self.packs_dir);
+            #[cfg(target_os = "ios")]
+            {
+                action = MenuAction::ImportResourcePacks;
+            }
+            #[cfg(not(target_os = "ios"))]
+            {
+                let _ = open::that_detached(&self.packs_dir);
+            }
         }
 
         let h = common::push_button(
@@ -2017,7 +2030,7 @@ impl MainMenu {
 
         MainMenuResult {
             elements,
-            action: MenuAction::None,
+            action,
             cursor_pointer: any_hovered,
             clicked_button: false,
         }
