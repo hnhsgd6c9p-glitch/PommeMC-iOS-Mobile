@@ -41,7 +41,7 @@ jobs:
         run: cargo test -p pomme-jvm -p pomme-mod
 
       - name: Install XcodeGen and pkg-config
-        run: brew install xcodegen pkg-config
+        run: brew install xcodegen pkg-config cmake
 
       - name: Generate Xcode project
         working-directory: pomme-ios

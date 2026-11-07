@@ -4580,6 +4580,8 @@ dependencies = [
  "pomme-dirs",
  "pomme-gpu-allocator",
  "pomme-install",
+ "pomme-jvm",
+ "pomme-mod",
  "pomme-protocol",
  "pomme-singleplayer",
  "pyronyx",
@@ -4590,6 +4592,7 @@ dependencies = [
  "reqwest",
  "rsa",
  "scopeguard",
+ "semver",
  "serde",
  "serde_json",
  "sha1",
@@ -4650,6 +4653,17 @@ name = "pomme-ios"
 version = "0.1.0"
 dependencies = [
  "pomme-client",
+]
+
+[[package]]
+name = "pomme-jvm"
+version = "0.1.0"
+dependencies = [
+ "pomme-mod",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "zip 9.1.3",
 ]
 
 [[package]]

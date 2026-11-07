@@ -41,6 +41,14 @@ pub struct MethodReference {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExceptionHandlerSummary {
+    pub start_pc: u16,
+    pub end_pc: u16,
+    pub handler_pc: u16,
+    pub catch_type: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MethodSummary {
     pub name: String,
     pub descriptor: String,
@@ -54,6 +62,29 @@ pub struct MethodSummary {
     pub code: Vec<u8>,
     pub invoked_methods: Vec<MethodReference>,
     pub field_accesses: Vec<FieldReference>,
+    pub exception_handlers: Vec<ExceptionHandlerSummary>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BootstrapMethodSummary {
+    pub target: MethodReference,
+    pub arguments: Vec<u16>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InvokeDynamicReference {
+    pub name: String,
+    pub descriptor: String,
+    pub bootstrap_index: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FieldSummary {
+    pub name: String,
+    pub descriptor: String,
+    pub access_flags: u16,
+    /// Integer ConstantValue for supported static integer fields.
+    pub constant_value: Option<i32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -73,6 +104,8 @@ pub struct ClassAnalysis {
     pub super_name: Option<String>,
     pub interfaces: Vec<String>,
     pub fields: usize,
+    /// Declared fields with JVM access flags and descriptors.
+    pub declared_fields: Vec<FieldSummary>,
     pub methods: Vec<MethodSummary>,
     pub annotations: usize,
     pub has_static_initializer: bool,
@@ -88,6 +121,17 @@ pub struct ClassAnalysis {
     pub dynamic_constants: usize,
     pub invokedynamic_constants: usize,
     pub bootstrap_methods: usize,
+    pub bootstrap_method_details: Vec<BootstrapMethodSummary>,
+    /// String constants keyed by their constant-pool index.
+    pub string_constants: BTreeMap<u16, String>,
+    /// Resolved method references keyed by their constant-pool index.
+    pub method_references: BTreeMap<u16, MethodReference>,
+    /// Resolved field references keyed by their constant-pool index.
+    pub field_reference_constants: BTreeMap<u16, FieldReference>,
+    /// Resolved class constants keyed by their constant-pool index.
+    pub class_constants: BTreeMap<u16, String>,
+    pub integer_constants: BTreeMap<u16, i32>,
+    pub invokedynamic_references: BTreeMap<u16, InvokeDynamicReference>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -105,6 +149,7 @@ pub struct JarCompatibilityReport {
     pub dynamic_constants: usize,
     pub invokedynamic_constants: usize,
     pub bootstrap_methods: usize,
+    pub bootstrap_method_details: Vec<BootstrapMethodSummary>,
     pub feature_flags: BTreeSet<String>,
     pub unsupported_or_high_risk_apis: BTreeSet<String>,
 }
@@ -114,6 +159,7 @@ enum CpEntry {
     Empty,
     Utf8(String),
     Class(u16),
+    String(u16),
     NameAndType(u16, u16),
     Ref {
         class: u16,
@@ -136,6 +182,7 @@ enum CpEntry {
         bootstrap_index: u16,
         name_type: u16,
     },
+    Integer(i32),
     Other,
 }
 
@@ -202,7 +249,8 @@ pub fn analyze_class(bytes: &[u8]) -> Result<ClassAnalysis, ClassFileError> {
                 field: tag == 9,
             },
             12 => CpEntry::NameAndType(r.u2()?, r.u2()?),
-            3 | 4 => {
+            3 => CpEntry::Integer(r.u4()? as i32),
+            4 => {
                 r.skip(4)?;
                 CpEntry::Other
             }
@@ -214,7 +262,8 @@ pub fn analyze_class(bytes: &[u8]) -> Result<ClassAnalysis, ClassFileError> {
                 i += 1;
                 continue;
             }
-            8 | 19 | 20 => {
+            8 => CpEntry::String(r.u2()?),
+            19 | 20 => {
                 r.skip(2)?;
                 CpEntry::Other
             }
@@ -253,8 +302,18 @@ pub fn analyze_class(bytes: &[u8]) -> Result<ClassAnalysis, ClassFileError> {
         interfaces.push(class_name(&cp, r.u2()?)?);
     }
     let field_count = bounded(r.u2()? as usize)?;
+    let mut declared_fields = Vec::with_capacity(field_count);
     for _ in 0..field_count {
-        skip_member(&mut r)?;
+        let flags = r.u2()?;
+        let field_name = utf8(&cp, r.u2()?)?;
+        let descriptor = utf8(&cp, r.u2()?)?;
+        let constant_value = parse_field_attributes(&mut r, &cp)?;
+        declared_fields.push(FieldSummary {
+            name: field_name,
+            descriptor,
+            access_flags: flags,
+            constant_value,
+        });
     }
     let method_count = bounded(r.u2()? as usize)?;
     let mut methods = Vec::with_capacity(method_count);
@@ -278,6 +337,7 @@ pub fn analyze_class(bytes: &[u8]) -> Result<ClassAnalysis, ClassFileError> {
         let mut method_code = Vec::new();
         let mut method_invokes = Vec::new();
         let mut method_field_accesses = Vec::new();
+        let mut exception_handlers = Vec::new();
         if method_name == "<clinit>" {
             has_static_initializer = true;
         }
@@ -320,11 +380,29 @@ pub fn analyze_class(bytes: &[u8]) -> Result<ClassAnalysis, ClassFileError> {
                     method_field_accesses.push(field);
                 }
                 let ex_count = bounded(code.u2()? as usize)?;
-                code.skip(
-                    ex_count
-                        .checked_mul(8)
-                        .ok_or(ClassFileError::TooManyItems)?,
-                )?;
+                for _ in 0..ex_count {
+                    let start_pc = code.u2()?;
+                    let end_pc = code.u2()?;
+                    let handler_pc = code.u2()?;
+                    let catch_index = code.u2()?;
+                    if start_pc >= end_pc
+                        || usize::from(end_pc) > code_len
+                        || usize::from(handler_pc) >= code_len
+                    {
+                        return Err(ClassFileError::InvalidBytecode);
+                    }
+                    let catch_type = if catch_index == 0 {
+                        None
+                    } else {
+                        Some(class_name(&cp, catch_index)?)
+                    };
+                    exception_handlers.push(ExceptionHandlerSummary {
+                        start_pc,
+                        end_pc,
+                        handler_pc,
+                        catch_type,
+                    });
+                }
                 skip_attributes(&mut code, &cp, &mut annotations)?;
                 if code.remaining() != 0 {
                     return Err(ClassFileError::InvalidBytecode);
@@ -344,9 +422,11 @@ pub fn analyze_class(bytes: &[u8]) -> Result<ClassAnalysis, ClassFileError> {
             code: method_code,
             invoked_methods: method_invokes,
             field_accesses: method_field_accesses,
+            exception_handlers,
         });
     }
-    let bootstrap_methods = parse_class_attributes(&mut r, &cp, &mut annotations)?;
+    let bootstrap_method_details = parse_class_attributes(&mut r, &cp, &mut annotations)?;
+    let bootstrap_methods = bootstrap_method_details.len();
     let mut method_handle_constants = 0;
     let mut method_type_constants = 0;
     let mut dynamic_constants = 0;
@@ -426,6 +506,46 @@ pub fn analyze_class(bytes: &[u8]) -> Result<ClassAnalysis, ClassFileError> {
         }
     }
     let invokedynamic_sites = opcode_counts.get("invokedynamic").copied().unwrap_or(0);
+    let mut string_constants = BTreeMap::new();
+    let mut class_constants = BTreeMap::new();
+    let mut integer_constants = BTreeMap::new();
+    let mut invokedynamic_references = BTreeMap::new();
+    let mut method_references = BTreeMap::new();
+    let mut field_reference_constants = BTreeMap::new();
+    for (index, entry) in cp.iter().enumerate() {
+        match entry {
+            CpEntry::String(utf8_index) => {
+                string_constants.insert(index as u16, utf8(&cp, *utf8_index)?);
+            }
+            CpEntry::Class(_) => {
+                class_constants.insert(index as u16, class_name(&cp, index as u16)?);
+            }
+            CpEntry::Integer(value) => {
+                integer_constants.insert(index as u16, *value);
+            }
+            CpEntry::InvokeDynamic {
+                bootstrap_index,
+                name_type,
+            } => {
+                let (name, descriptor) = name_and_type(&cp, *name_type)?;
+                invokedynamic_references.insert(
+                    index as u16,
+                    InvokeDynamicReference {
+                        name,
+                        descriptor,
+                        bootstrap_index: usize::from(*bootstrap_index),
+                    },
+                );
+            }
+            CpEntry::Ref { field: false, .. } => {
+                method_references.insert(index as u16, method_ref(&cp, index as u16)?);
+            }
+            CpEntry::Ref { field: true, .. } => {
+                field_reference_constants.insert(index as u16, field_ref(&cp, index as u16, "")?);
+            }
+            _ => {}
+        }
+    }
     Ok(ClassAnalysis {
         minor_version,
         major_version,
@@ -434,6 +554,7 @@ pub fn analyze_class(bytes: &[u8]) -> Result<ClassAnalysis, ClassFileError> {
         super_name,
         interfaces,
         fields: field_count,
+        declared_fields,
         methods,
         annotations,
         has_static_initializer,
@@ -449,6 +570,13 @@ pub fn analyze_class(bytes: &[u8]) -> Result<ClassAnalysis, ClassFileError> {
         dynamic_constants,
         invokedynamic_constants,
         bootstrap_methods,
+        string_constants,
+        method_references,
+        field_reference_constants,
+        class_constants,
+        integer_constants,
+        invokedynamic_references,
+        bootstrap_method_details,
     })
 }
 
@@ -605,21 +733,36 @@ fn field_ref(cp: &[CpEntry], index: u16, opcode: &str) -> Result<FieldReference,
         _ => Err(ClassFileError::BadConstant(index)),
     }
 }
-fn skip_member(r: &mut Reader<'_>) -> Result<(), ClassFileError> {
-    r.skip(6)?;
+fn parse_field_attributes(
+    r: &mut Reader<'_>,
+    cp: &[CpEntry],
+) -> Result<Option<i32>, ClassFileError> {
     let count = bounded(r.u2()? as usize)?;
+    let mut constant_value = None;
     for _ in 0..count {
-        r.skip(2)?;
+        let name = utf8(cp, r.u2()?)?;
         let len = bounded(r.u4()? as usize)?;
-        r.skip(len)?;
+        let data = r.take(len)?;
+        if name == "ConstantValue" {
+            if len != 2 || constant_value.is_some() {
+                return Err(ClassFileError::InvalidBytecode);
+            }
+            let index = u16::from_be_bytes([data[0], data[1]]);
+            let entry = cp
+                .get(index as usize)
+                .ok_or(ClassFileError::BadConstant(index))?;
+            if let CpEntry::Integer(value) = entry {
+                constant_value = Some(*value);
+            }
+        }
     }
-    Ok(())
+    Ok(constant_value)
 }
 fn parse_class_attributes(
     r: &mut Reader<'_>,
     cp: &[CpEntry],
     annotations: &mut usize,
-) -> Result<usize, ClassFileError> {
+) -> Result<Vec<BootstrapMethodSummary>, ClassFileError> {
     let count = bounded(r.u2()? as usize)?;
     let mut bootstrap_methods = None;
     for _ in 0..count {
@@ -635,32 +778,46 @@ fn parse_class_attributes(
             count_annotation_attribute(&name, data, cp, annotations)?;
         }
     }
-    Ok(bootstrap_methods.unwrap_or(0))
+    Ok(bootstrap_methods.unwrap_or_default())
 }
 
-fn parse_bootstrap_methods(data: &[u8], cp: &[CpEntry]) -> Result<usize, ClassFileError> {
+fn parse_bootstrap_methods(
+    data: &[u8],
+    cp: &[CpEntry],
+) -> Result<Vec<BootstrapMethodSummary>, ClassFileError> {
     let mut r = Reader::new(data);
     let count = bounded(r.u2()? as usize)?;
+    let mut methods = Vec::with_capacity(count);
     for _ in 0..count {
-        let method_ref = r.u2()?;
+        let method_ref_index = r.u2()?;
         if !matches!(
-            cp.get(method_ref as usize),
+            cp.get(method_ref_index as usize),
             Some(CpEntry::MethodHandle { .. })
         ) {
-            return Err(ClassFileError::BadConstant(method_ref));
+            return Err(ClassFileError::BadConstant(method_ref_index));
         }
+        let reference_index = match cp.get(method_ref_index as usize) {
+            Some(CpEntry::MethodHandle {
+                reference_index, ..
+            }) => *reference_index,
+            _ => unreachable!(),
+        };
+        let target = method_ref(cp, reference_index)?;
         let argument_count = bounded(r.u2()? as usize)?;
+        let mut arguments = Vec::with_capacity(argument_count);
         for _ in 0..argument_count {
             let argument = r.u2()?;
             if matches!(cp.get(argument as usize), None | Some(CpEntry::Empty)) {
                 return Err(ClassFileError::BadConstant(argument));
             }
+            arguments.push(argument);
         }
+        methods.push(BootstrapMethodSummary { target, arguments });
     }
     if r.remaining() != 0 {
         return Err(ClassFileError::InvalidBytecode);
     }
-    Ok(count)
+    Ok(methods)
 }
 
 fn skip_attributes(

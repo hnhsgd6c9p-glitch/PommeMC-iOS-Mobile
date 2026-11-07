@@ -19,8 +19,8 @@ pub mod ir;
 pub mod java_subset;
 mod wasm_runtime;
 pub use classfile::{
-    ClassAnalysis, ClassFileError, JarCompatibilityReport, MethodReference, MethodSummary,
-    analyze_class, analyze_jar_classes,
+    ClassAnalysis, ClassFileError, FieldSummary, JarCompatibilityReport, MethodReference,
+    MethodSummary, analyze_class, analyze_jar_classes,
 };
 pub use ir::{
     BasicBlock, BinaryCondition, BlockTerminator, ControlFlowGraph, IrError, IrInstruction,
