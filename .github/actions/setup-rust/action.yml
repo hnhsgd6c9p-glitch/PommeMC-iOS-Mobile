@@ -1,7 +1,7 @@
 name: Set up Rust
 description: >-
-  The toolchain, a cargo cache, just and cargo-nextest, the Vulkan SDK and, on
-  Linux, the system libraries the client links. Runs after checkout.
+  The pinned Rust toolchain, a cargo cache, just and cargo-nextest, the Vulkan
+  SDK where needed and, on Linux, the system libraries the client links.
 
 inputs:
   cache-key:
@@ -11,9 +11,10 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: dtolnay/rust-toolchain@nightly
+    - uses: dtolnay/rust-toolchain@master
       with:
-        components: clippy, rustfmt
+        toolchain: nightly-2026-08-21
+        components: clippy, rustfmt, rust-analyzer, rust-src
 
     - uses: Swatinem/rust-cache@v2
       with:
@@ -27,6 +28,7 @@ runs:
         tool: just,cargo-nextest
 
     - name: Install Vulkan SDK
+      if: runner.os != 'macOS'
       uses: jakoch/install-vulkan-sdk-action@37effcfa045411f8bfbbda26df2fd1b3bf3436fa
       with:
         vulkan_version: 1.4.341.0
