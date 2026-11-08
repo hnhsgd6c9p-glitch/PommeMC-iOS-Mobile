@@ -1,4 +1,7 @@
-use crate::bounds;
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::atomic::Ordering;
+
 use flate2::{Decompress, FlushDecompress};
 use portable_atomic::AtomicI64;
 use ristretto_classfile::JAVA_8;
@@ -6,11 +9,9 @@ use ristretto_classfile::VersionSpecification::{Any, GreaterThan, LessThanOrEqua
 use ristretto_classloader::Value;
 use ristretto_gc::sync::RwLock;
 use ristretto_macros::intrinsic_method;
-use ristretto_types::Thread;
-use ristretto_types::{Parameters, Result, VM};
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::sync::atomic::Ordering;
+use ristretto_types::{Parameters, Result, Thread, VM};
+
+use crate::bounds;
 
 /// Inflater context containing the decompressor and its mode
 struct InflaterContext {
@@ -100,6 +101,9 @@ pub fn inflate_buffer_buffer<T: Thread + 'static>(
     _thread: Arc<T>,
     _parameters: Parameters,
 ) -> Result<Option<Value>> {
+    if std::env::var_os("POMME_FABRIC_DEBUG").is_some() {
+        eprintln!("[POMME_INFLATER] inflateBufferBuffer called");
+    }
     Ok(Some(Value::Long(0)))
 }
 
@@ -111,6 +115,9 @@ pub fn inflate_buffer_bytes<T: Thread + 'static>(
     _thread: Arc<T>,
     _parameters: Parameters,
 ) -> Result<Option<Value>> {
+    if std::env::var_os("POMME_FABRIC_DEBUG").is_some() {
+        eprintln!("[POMME_INFLATER] inflateBufferBytes called");
+    }
     Ok(Some(Value::Long(0)))
 }
 
@@ -122,6 +129,9 @@ pub fn inflate_bytes_buffer<T: Thread + 'static>(
     _thread: Arc<T>,
     _parameters: Parameters,
 ) -> Result<Option<Value>> {
+    if std::env::var_os("POMME_FABRIC_DEBUG").is_some() {
+        eprintln!("[POMME_INFLATER] inflateBytesBuffer called");
+    }
     Ok(Some(Value::Long(0)))
 }
 
@@ -243,6 +253,10 @@ pub fn inflate_bytes_bytes<T: Thread + 'static>(
     thread: Arc<T>,
     mut parameters: Parameters,
 ) -> Result<Option<Value>> {
+    let trace = std::env::var_os("POMME_FABRIC_DEBUG").is_some();
+    if trace {
+        eprintln!("[POMME_INFLATER] inflateBytesBytes entered");
+    }
     let output_len_i32 = parameters.pop_int()?;
     let output_off_i32 = parameters.pop_int()?;
     let output_ref = parameters.pop_reference()?;
@@ -365,6 +379,11 @@ pub fn inflate_bytes_bytes<T: Thread + 'static>(
     // bits 31-61: bytes written (31 bits)
     // bit 62: finished flag
     // bit 63: needDict flag
+    if trace {
+        eprintln!(
+            "[POMME_INFLATER] inflateBytesBytes read={bytes_read} wrote={bytes_written} finished={finished} need_dict={need_dict}"
+        );
+    }
     let mut result: i64 = (bytes_read & 0x7fff_ffff) | ((bytes_written & 0x7fff_ffff) << 31);
     if finished {
         result |= 1i64 << 62;
@@ -480,9 +499,10 @@ pub fn set_dictionary<T: Thread + 'static>(
         .into());
     };
 
-    // Set the dictionary; this may fail if the stream hasn't requested a dictionary yet.
-    // We ignore errors here since the Java API doesn't throw on setDictionary.
-    // The dictionary will be used when the stream actually needs it.
+    // Set the dictionary; this may fail if the stream hasn't requested a dictionary
+    // yet. We ignore errors here since the Java API doesn't throw on
+    // setDictionary. The dictionary will be used when the stream actually needs
+    // it.
     let _ = context.decompress.set_dictionary(&dict_bytes);
     context.needs_dict = false;
 
@@ -503,9 +523,10 @@ pub fn set_dictionary_buffer<T: Thread + 'static>(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use flate2::{Compress, Compression, FlushCompress, Status};
     use ristretto_classloader::{Object, Reference};
+
+    use super::*;
 
     #[tokio::test]
     async fn test_init_and_end() -> Result<()> {
