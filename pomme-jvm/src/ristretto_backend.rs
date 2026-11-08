@@ -32,6 +32,8 @@ pub enum RistrettoBackendError {
     InvalidFabricRuntime(PathBuf),
     #[error("Could not inspect the bundled Fabric runtime: {0}")]
     FabricRuntimeIo(#[from] std::io::Error),
+    #[error("Invalid Java runtime JAR: {0}")]
+    Zip(#[from] zip::result::ZipError),
     #[error("Invalid Fabric runtime manifest: {0}")]
     FabricManifest(String),
 }
@@ -600,8 +602,7 @@ pub async fn run_fabric_loader(
 #[cfg(test)]
 mod multi_release_jar_tests {
     use super::*;
-    use std::io::Cursor;
-    use std::time::{SystemTime, UNIX_EPOCH};
+        use std::time::{SystemTime, UNIX_EPOCH};
 
     fn make_multi_release_jar(path: &Path) {
         let mut writer = ZipWriter::new(File::create(path).expect("create test JAR"));
@@ -745,10 +746,5 @@ mod multi_release_jar_tests {
                     && value.trim().eq_ignore_ascii_case("true")
             })
         }));
-    }
-
-    #[allow(dead_code)]
-    fn _cursor_type_check() {
-        let _ = Cursor::new(Vec::<u8>::new());
     }
 }
