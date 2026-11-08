@@ -1,0 +1,83 @@
+use ristretto_classfile::VersionSpecification::Any;
+use ristretto_classloader::Value;
+use ristretto_macros::intrinsic_method;
+use ristretto_types::JavaError;
+use ristretto_types::Thread;
+use ristretto_types::{Parameters, Result};
+use std::sync::Arc;
+
+#[intrinsic_method(
+    "sun/awt/windows/WButtonPeer.create(Lsun/awt/windows/WComponentPeer;)V",
+    Any
+)]
+pub fn create<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _parent = parameters.pop_reference()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "sun/awt/windows/WButtonPeer.create(Lsun/awt/windows/WComponentPeer;)V".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method("sun/awt/windows/WButtonPeer.initIDs()V", Any)]
+pub fn init_ids<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Err(
+        JavaError::UnsatisfiedLinkError("sun/awt/windows/WButtonPeer.initIDs()V".to_string())
+            .into(),
+    )
+}
+
+#[intrinsic_method("sun/awt/windows/WButtonPeer.setLabel(Ljava/lang/String;)V", Any)]
+pub fn set_label<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _label = parameters.pop_reference()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "sun/awt/windows/WButtonPeer.setLabel(Ljava/lang/String;)V".to_string(),
+    )
+    .into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(target_os = "windows")]
+    #[tokio::test]
+    async fn test_create() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = create(thread, Parameters::new(vec![Value::Object(None)]));
+        assert_eq!(
+            "sun/awt/windows/WButtonPeer.create(Lsun/awt/windows/WComponentPeer;)V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[tokio::test]
+    async fn test_init_ids() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = init_ids(thread, Parameters::default());
+        assert_eq!(
+            "sun/awt/windows/WButtonPeer.initIDs()V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[tokio::test]
+    async fn test_set_label() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = set_label(thread, Parameters::new(vec![Value::Object(None)]));
+        assert_eq!(
+            "sun/awt/windows/WButtonPeer.setLabel(Ljava/lang/String;)V",
+            result.unwrap_err().to_string()
+        );
+    }
+}

@@ -1,9 +1,10 @@
-//! Pomme's Rust-implemented JVM runtime.
+//! Pomme Java runtime integration.
 //!
-//! This crate starts with a fuel-bounded interpreter for a well-defined JVM
-//! integer-bytecode subset. It is deliberately not advertised as a complete
-//! JVM: class loading, verification, object semantics, exceptions, threads,
-//! the Java class library, and dynamic linking are subsequent milestones.
+//! The legacy bounded interpreter remains for metadata probes and compatibility
+//! tests. General Java execution is being migrated to the Ristretto JVM
+//! backend; see ristretto_backend for the full-runtime entry point.
+
+pub mod ristretto_backend;
 
 use std::collections::{BTreeMap, BTreeSet};
 

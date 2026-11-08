@@ -18,6 +18,9 @@ targets:
     platform: iOS
     sources:
       - path: Assets.xcassets
+    resources:
+      - path: Resources/JavaRuntime
+      - path: Resources/FabricRuntime
     info:
       path: Info.plist
       properties:

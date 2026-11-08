@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "fabric-api",
+  "provides": [
+    "fabric-api-base",
+    "fabric-lifecycle-events-v1"
+  ],
+  "version": "0.116.9+1.21.1-pomme.1",
+  "name": "Pomme Fabric API Compatibility Bridge",
+  "environment": "client",
+  "license": "Apache-2.0",
+  "depends": {
+    "fabricloader": ">=0.18.4",
+    "minecraft": "1.21.1",
+    "java": ">=21"
+  }
+}

@@ -1,0 +1,108 @@
+use ristretto_classfile::JAVA_8;
+use ristretto_classfile::VersionSpecification::LessThanOrEqual;
+use ristretto_classloader::Value;
+use ristretto_macros::intrinsic_method;
+use ristretto_types::JavaError;
+use ristretto_types::Thread;
+use ristretto_types::{Parameters, Result};
+use std::sync::Arc;
+
+#[intrinsic_method(
+    "sun/management/DiagnosticCommandImpl.executeDiagnosticCommand(Ljava/lang/String;)Ljava/lang/String;",
+    LessThanOrEqual(JAVA_8)
+)]
+pub fn execute_diagnostic_command<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _arg0 = parameters.pop_reference()?;
+    Err(JavaError::UnsatisfiedLinkError("sun.management.DiagnosticCommandImpl.executeDiagnosticCommand(Ljava/lang/String;)Ljava/lang/String;".to_string()).into())
+}
+
+#[intrinsic_method(
+    "sun/management/DiagnosticCommandImpl.getDiagnosticCommandInfo([Ljava/lang/String;)[Lsun/management/DiagnosticCommandInfo;",
+    LessThanOrEqual(JAVA_8)
+)]
+pub fn get_diagnostic_command_info<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _arg0 = parameters.pop_reference()?;
+    Err(JavaError::UnsatisfiedLinkError("sun.management.DiagnosticCommandImpl.getDiagnosticCommandInfo([Ljava/lang/String;)[Lsun/management/DiagnosticCommandInfo;".to_string()).into())
+}
+
+#[intrinsic_method(
+    "sun/management/DiagnosticCommandImpl.getDiagnosticCommands()[Ljava/lang/String;",
+    LessThanOrEqual(JAVA_8)
+)]
+pub fn get_diagnostic_commands<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Err(JavaError::UnsatisfiedLinkError(
+        "sun.management.DiagnosticCommandImpl.getDiagnosticCommands()[Ljava/lang/String;"
+            .to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "sun/management/DiagnosticCommandImpl.setNotificationEnabled(Z)V",
+    LessThanOrEqual(JAVA_8)
+)]
+pub fn set_notification_enabled<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _enabled = parameters.pop_bool()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "sun.management.DiagnosticCommandImpl.setNotificationEnabled(Z)V".to_string(),
+    )
+    .into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_execute_diagnostic_command() {
+        let (_vm, thread) = crate::test::java8_thread().await.expect("thread");
+        let result = execute_diagnostic_command(thread, Parameters::new(vec![Value::Object(None)]));
+        assert_eq!(
+            "sun.management.DiagnosticCommandImpl.executeDiagnosticCommand(Ljava/lang/String;)Ljava/lang/String;",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_diagnostic_command_info() {
+        let (_vm, thread) = crate::test::java8_thread().await.expect("thread");
+        let result =
+            get_diagnostic_command_info(thread, Parameters::new(vec![Value::Object(None)]));
+        assert_eq!(
+            "sun.management.DiagnosticCommandImpl.getDiagnosticCommandInfo([Ljava/lang/String;)[Lsun/management/DiagnosticCommandInfo;",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_diagnostic_commands() {
+        let (_vm, thread) = crate::test::java8_thread().await.expect("thread");
+        let result = get_diagnostic_commands(thread, Parameters::default());
+        assert_eq!(
+            "sun.management.DiagnosticCommandImpl.getDiagnosticCommands()[Ljava/lang/String;",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_set_notification_enabled() {
+        let (_vm, thread) = crate::test::java8_thread().await.expect("thread");
+        let result = set_notification_enabled(thread, Parameters::new(vec![Value::from(false)]));
+        assert_eq!(
+            "sun.management.DiagnosticCommandImpl.setNotificationEnabled(Z)V",
+            result.unwrap_err().to_string()
+        );
+    }
+}

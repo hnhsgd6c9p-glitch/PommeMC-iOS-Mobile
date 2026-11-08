@@ -65,6 +65,7 @@ azalea-chat = { git = "https://github.com/azalea-rs/azalea", rev = "ffedf17c9b6f
 azalea-core = { git = "https://github.com/azalea-rs/azalea", rev = "ffedf17c9b6ff9fbafbf7e0d14c8d2366b2d0a32" }
 azalea-registry = { git = "https://github.com/azalea-rs/azalea", rev = "ffedf17c9b6ff9fbafbf7e0d14c8d2366b2d0a32" }
 azalea-inventory = { git = "https://github.com/azalea-rs/azalea", rev = "ffedf17c9b6ff9fbafbf7e0d14c8d2366b2d0a32" }
+ristretto_intrinsics = { path = "third_party/ristretto_intrinsics" }
 
 [patch."https://github.com/azalea-rs/azalea"]
 azalea-block = { path = "pomme-block" }

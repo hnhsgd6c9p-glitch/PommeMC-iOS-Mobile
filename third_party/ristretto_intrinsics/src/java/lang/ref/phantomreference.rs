@@ -1,0 +1,86 @@
+use crate::java::lang::r#ref::reference;
+use ristretto_classfile::JAVA_17;
+use ristretto_classfile::JAVA_25;
+use ristretto_classfile::VersionSpecification::GreaterThanOrEqual;
+use ristretto_classloader::Value;
+use ristretto_macros::intrinsic_method;
+use ristretto_types::Thread;
+use ristretto_types::{Parameters, Result};
+use std::sync::Arc;
+
+#[intrinsic_method(
+    "java/lang/ref/PhantomReference.clear0()V",
+    GreaterThanOrEqual(JAVA_25)
+)]
+pub fn clear_0<T: Thread + 'static>(
+    thread: Arc<T>,
+    parameters: Parameters,
+) -> Result<Option<Value>> {
+    reference::clear_0(thread, parameters)
+}
+
+#[intrinsic_method(
+    "java/lang/ref/PhantomReference.refersTo0(Ljava/lang/Object;)Z",
+    GreaterThanOrEqual(JAVA_17)
+)]
+pub fn refers_to_0<T: Thread + 'static>(
+    thread: Arc<T>,
+    parameters: Parameters,
+) -> Result<Option<Value>> {
+    reference::refers_to_0(thread, parameters)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ristretto_types::JavaObject;
+
+    #[tokio::test]
+    async fn test_clear_0() -> Result<()> {
+        let (vm, thread) = crate::test::thread().await.expect("thread");
+        let value = "foo".to_object(&thread).await?;
+        let reference_queue = vm
+            .object("java/lang/ref/ReferenceQueue", "", &[] as &[Value])
+            .await?;
+        let phantom_reference = vm
+            .object(
+                "java/lang/ref/PhantomReference",
+                "Ljava/lang/Object;Ljava/lang/ref/ReferenceQueue;",
+                &[value, reference_queue],
+            )
+            .await?;
+        let mut parameters = Parameters::default();
+        parameters.push(phantom_reference.clone());
+
+        let result = clear_0(thread, parameters)?;
+        assert_eq!(result, None);
+        let phantom_reference = phantom_reference.as_object_ref()?;
+        let referent = phantom_reference.value("referent")?;
+        assert_eq!(referent, Value::Object(None));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_refers_to_0() -> Result<()> {
+        let (vm, thread) = crate::test::thread().await.expect("thread");
+        let value = "foo".to_object(&thread).await?;
+        let reference_queue = vm
+            .object("java/lang/ref/ReferenceQueue", "", &[] as &[Value])
+            .await?;
+        let phantom_reference = vm
+            .object(
+                "java/lang/ref/PhantomReference",
+                "Ljava/lang/Object;Ljava/lang/ref/ReferenceQueue;",
+                &[value.clone(), reference_queue],
+            )
+            .await?;
+        let mut parameters = Parameters::default();
+        parameters.push(phantom_reference.clone());
+        parameters.push(value.clone());
+
+        let value = refers_to_0(thread, parameters)?.expect("refers to");
+        let refers_to = value.as_bool()?;
+        assert!(refers_to);
+        Ok(())
+    }
+}

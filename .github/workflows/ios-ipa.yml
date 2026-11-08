@@ -31,6 +31,9 @@ jobs:
       - name: Add iOS device target
         run: rustup target add aarch64-apple-ios
 
+      - name: Install native build prerequisites
+        run: brew install xcodegen pkg-config cmake
+
       - name: Set up Java 21 for compiled-Java fixtures
         uses: actions/setup-java@v4
         with:
@@ -46,8 +49,85 @@ jobs:
       - name: Check iOS Rust target
         run: cargo check --target aarch64-apple-ios -p pomme-client --lib
 
-      - name: Install XcodeGen and pkg-config
-        run: brew install xcodegen pkg-config cmake
+      - name: Package embedded Java 21 runtime modules
+        run: |
+          set -euo pipefail
+          RUNTIME_DIR=pomme-ios/Resources/JavaRuntime/21
+          rm -rf "$RUNTIME_DIR"
+          mkdir -p "$RUNTIME_DIR/lib"
+          cp "$JAVA_HOME/release" "$RUNTIME_DIR/release"
+          cp "$JAVA_HOME/lib/modules" "$RUNTIME_DIR/lib/modules"
+          test -s "$RUNTIME_DIR/lib/modules"
+          test -s "$RUNTIME_DIR/release"
+
+      - name: Package official Fabric Loader and Mixin runtime for Minecraft 1.21.1
+        run: |
+          set -euo pipefail
+          JAVA_HOME="$JAVA_HOME" pomme-jvm/scripts/fetch-fabric-runtime.sh \
+            1.21.1 0.18.4 pomme-ios/Resources/FabricRuntime/1.21.1
+          test -s pomme-ios/Resources/FabricRuntime/1.21.1/lib/fabric-loader-0.18.4-pomme.jar
+          test -s pomme-ios/Resources/FabricRuntime/1.21.1/lib/intermediary-1.21.1-v2.jar
+          test -s pomme-ios/Resources/FabricRuntime/1.21.1/lib/sponge-mixin-0.17.0+mixin.0.8.7.jar
+          test -s pomme-ios/Resources/FabricRuntime/1.21.1/lib/pomme-fabric-provider.jar
+          test -s pomme-ios/Resources/FabricRuntime/1.21.1/runtime.json
+          python3 -m json.tool pomme-ios/Resources/FabricRuntime/1.21.1/runtime.json > /dev/null
+          test -s pomme-ios/Resources/FabricRuntime/1.21.1/builtin-mods/pomme-fabric-api-shim.jar
+          test -s /tmp/pomme-fabric-api-test-classpath-1.21.1
+
+      - name: Test official Fabric Loader and Mixin inside Ristretto
+        env:
+          POMME_FABRIC_RUNTIME: ${{ github.workspace }}/pomme-ios/Resources/FabricRuntime/1.21.1
+        run: cargo test -p pomme-jvm --test fabric_loader_bootstrap
+
+      - name: Fetch pinned third-party Fabric mod fixture
+        run: pomme-jvm/scripts/fetch-third-party-mod-fixtures.sh /tmp/pomme-third-party-mods
+
+      - name: Build minimal official Fabric API test aggregate
+        run: |
+          python3 pomme-jvm/scripts/build-fabric-api-test-fixture.py \
+            /tmp/pomme-official-fabric-api-1.21.1.jar \
+            /tmp/pomme-third-party-mods/fabric-api-minimal-1.21.1.jar
+
+      - name: Audit third-party AppleSkin Minecraft ABI
+        run: |
+          set -euo pipefail
+          POMME_ABI_REPORT=/tmp/pomme-third-party-mods/appleskin-abi.json \
+            pomme-jvm/scripts/audit-mod-abi.sh \
+            /tmp/pomme-third-party-mods/appleskin-fabric-mc1.21-3.0.6.jar
+          python3 - <<'PY'
+          import json
+          report = json.load(open("/tmp/pomme-third-party-mods/appleskin-abi.json"))
+          if report["missingClassCount"] or report["missingMemberCount"]:
+              raise SystemExit("AppleSkin references an incomplete Minecraft ABI")
+          print("AppleSkin ABI complete: 54 Minecraft classes, no missing members")
+          PY
+
+      - name: Load real third-party Lithium mod and verify its Mixin transformation
+        env:
+          POMME_FABRIC_RUNTIME: ${{ github.workspace }}/pomme-ios/Resources/FabricRuntime/1.21.1
+          POMME_LITHIUM_JAR: /tmp/pomme-third-party-mods/lithium-fabric-0.15.4+mc1.21.1.jar
+        run: cargo test -p pomme-jvm --test third_party_lithium -- --ignored --nocapture
+
+
+      - name: Set up Java 25 for Minecraft 26.x compatibility
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Test JVM compatibility on Java 25
+        run: cargo test -p pomme-jvm --test ristretto_backend
+
+      - name: Package embedded Java 25 runtime modules
+        run: |
+          set -euo pipefail
+          RUNTIME_DIR=pomme-ios/Resources/JavaRuntime/25
+          rm -rf "$RUNTIME_DIR"
+          mkdir -p "$RUNTIME_DIR/lib"
+          cp "$JAVA_HOME/release" "$RUNTIME_DIR/release"
+          cp "$JAVA_HOME/lib/modules" "$RUNTIME_DIR/lib/modules"
+          test -s "$RUNTIME_DIR/lib/modules"
+          test -s "$RUNTIME_DIR/release"
 
       - name: Generate Xcode project
         working-directory: pomme-ios

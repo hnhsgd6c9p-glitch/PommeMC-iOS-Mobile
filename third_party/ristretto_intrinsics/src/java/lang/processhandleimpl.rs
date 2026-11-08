@@ -1,0 +1,481 @@
+#[cfg(not(target_family = "wasm"))]
+use crate::bounds;
+use ristretto_classfile::JAVA_11;
+use ristretto_classfile::VersionSpecification::GreaterThanOrEqual;
+#[cfg(not(target_family = "wasm"))]
+use ristretto_classloader::Reference;
+use ristretto_classloader::Value;
+use ristretto_macros::intrinsic_method;
+#[cfg(target_family = "wasm")]
+use ristretto_types::JavaError;
+use ristretto_types::Thread;
+use ristretto_types::{Parameters, Result};
+#[cfg(not(target_family = "wasm"))]
+use std::process;
+use std::sync::Arc;
+#[cfg(not(target_family = "wasm"))]
+use sysinfo::{Pid, ProcessesToUpdate, Signal, System};
+
+#[intrinsic_method(
+    "java/lang/ProcessHandleImpl.destroy0(JJZ)Z",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn destroy_0<T: Thread + 'static>(
+    _thread: Arc<T>,
+    #[cfg_attr(target_family = "wasm", expect(unused_mut))] mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    #[cfg(not(target_family = "wasm"))]
+    {
+        let force = parameters.pop_bool()?;
+        let _start_time = parameters.pop_long()?;
+        let pid = parameters.pop_long()?;
+        let pid = usize::try_from(pid)?;
+        let pid = Pid::from(pid);
+        let mut system = System::new_all()
+            .map_err(|error| ristretto_types::Error::InternalError(error.to_string()))?;
+        system.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
+
+        let Some(process) = system.process(pid) else {
+            return Ok(Some(Value::from(false)));
+        };
+
+        let signal = if force { Signal::Kill } else { Signal::Term };
+        let signal_without_error = process.kill_with(signal).unwrap_or(false);
+
+        Ok(Some(Value::from(signal_without_error)))
+    }
+    #[cfg(target_family = "wasm")]
+    {
+        let _ = parameters;
+        Err(JavaError::UnsupportedOperationException(
+            "java.lang.ProcessHandleImpl.destroy0(JJZ)Z".to_string(),
+        )
+        .into())
+    }
+}
+
+#[intrinsic_method(
+    "java/lang/ProcessHandleImpl.getCurrentPid0()J",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn get_current_pid_0<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    #[cfg(not(target_family = "wasm"))]
+    {
+        let pid = i64::from(process::id());
+        Ok(Some(Value::Long(pid)))
+    }
+    #[cfg(target_family = "wasm")]
+    {
+        Err(JavaError::UnsupportedOperationException(
+            "java.lang.ProcessHandleImpl.getCurrentPid0()J".to_string(),
+        )
+        .into())
+    }
+}
+
+#[intrinsic_method(
+    "java/lang/ProcessHandleImpl.getProcessPids0(J[J[J[J)I",
+    GreaterThanOrEqual(JAVA_11)
+)]
+#[cfg_attr(not(target_family = "wasm"), expect(clippy::similar_names))]
+pub fn get_process_pids_0<T: Thread + 'static>(
+    _thread: Arc<T>,
+    #[cfg_attr(target_family = "wasm", expect(unused_mut))] mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    #[cfg(not(target_family = "wasm"))]
+    {
+        let Some(start_times_ref) = parameters.pop_reference()? else {
+            return Ok(Some(Value::Int(-1)));
+        };
+        let Some(ppids_ref) = parameters.pop_reference()? else {
+            return Ok(Some(Value::Int(-1)));
+        };
+        let Some(pids_ref) = parameters.pop_reference()? else {
+            return Ok(Some(Value::Int(-1)));
+        };
+
+        let mut start_times_guard = start_times_ref.write();
+        let Reference::LongArray(start_times) = &mut *start_times_guard else {
+            return Ok(Some(Value::Int(-1)));
+        };
+
+        let mut ppids_guard = ppids_ref.write();
+        let Reference::LongArray(ppids) = &mut *ppids_guard else {
+            return Ok(Some(Value::Int(-1)));
+        };
+
+        let mut pids_guard = pids_ref.write();
+        let Reference::LongArray(pids) = &mut *pids_guard else {
+            return Ok(Some(Value::Int(-1)));
+        };
+
+        let pid = parameters.pop_long()?;
+        let mut system = System::new_all()
+            .map_err(|error| ristretto_types::Error::InternalError(error.to_string()))?;
+
+        let processes_length = if pid == 0 {
+            system.refresh_processes(ProcessesToUpdate::All, true);
+            let processes = system.processes();
+            for (index, (pid, process)) in processes.iter().enumerate() {
+                let (Some(pid_slot), Some(ppid_slot), Some(start_time_slot)) = (
+                    pids.get_mut(index),
+                    ppids.get_mut(index),
+                    start_times.get_mut(index),
+                ) else {
+                    break;
+                };
+
+                let pid = pid.as_u32();
+                let pid = i64::from(pid);
+                *pid_slot = pid;
+                let parent = process.parent().map(Pid::as_u32).unwrap_or_default();
+                let parent = i64::from(parent);
+                *ppid_slot = parent;
+                let start_time = i64::try_from(process.start_time()).unwrap_or_default() * 1000;
+                *start_time_slot = start_time;
+            }
+            i32::try_from(processes.len())?
+        } else {
+            let pid = usize::try_from(pid)?;
+            let pid = Pid::from(pid);
+            system.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
+            if let Some(process) = system.process(pid) {
+                if !pids.is_empty() {
+                    let pid = pid.as_u32();
+                    let pid = i64::from(pid);
+                    *bounds::index_mut(pids, 0, "ProcessHandleImpl pids")? = pid;
+                    let parent = process.parent().map(Pid::as_u32).unwrap_or_default();
+                    let parent = i64::from(parent);
+                    *bounds::index_mut(ppids, 0, "ProcessHandleImpl ppids")? = parent;
+                    let start_time = i64::try_from(process.start_time()).unwrap_or_default() * 1000;
+                    *bounds::index_mut(start_times, 0, "ProcessHandleImpl start_times")? =
+                        start_time;
+                }
+                1
+            } else {
+                -1
+            }
+        };
+
+        Ok(Some(Value::Int(processes_length)))
+    }
+    #[cfg(target_family = "wasm")]
+    {
+        let _ = parameters;
+        Err(JavaError::UnsupportedOperationException(
+            "java.lang.ProcessHandleImpl.getProcessPids0(J[J[J[J)I".to_string(),
+        )
+        .into())
+    }
+}
+
+#[intrinsic_method(
+    "java/lang/ProcessHandleImpl.initNative()V",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn init_native<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Ok(None)
+}
+
+#[intrinsic_method(
+    "java/lang/ProcessHandleImpl.isAlive0(J)J",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn is_alive_0<T: Thread + 'static>(
+    _thread: Arc<T>,
+    #[cfg_attr(target_family = "wasm", expect(unused_mut))] mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    #[cfg(not(target_family = "wasm"))]
+    {
+        let pid = parameters.pop_long()?;
+        let pid = usize::try_from(pid)?;
+        let pid = Pid::from(pid);
+        let mut system = System::new_all()
+            .map_err(|error| ristretto_types::Error::InternalError(error.to_string()))?;
+        system.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
+
+        let start_time = if let Some(process) = system.process(pid) {
+            i64::try_from(process.start_time()).unwrap_or_default() * 1000
+        } else {
+            -1
+        };
+
+        Ok(Some(Value::Long(start_time)))
+    }
+    #[cfg(target_family = "wasm")]
+    {
+        let _ = parameters;
+        Err(JavaError::UnsupportedOperationException(
+            "java.lang.ProcessHandleImpl.isAlive0(J)J".to_string(),
+        )
+        .into())
+    }
+}
+
+#[intrinsic_method(
+    "java/lang/ProcessHandleImpl.parent0(JJ)J",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn parent_0<T: Thread + 'static>(
+    _thread: Arc<T>,
+    #[cfg_attr(target_family = "wasm", expect(unused_mut))] mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    #[cfg(not(target_family = "wasm"))]
+    {
+        let _start_time = parameters.pop_long()?;
+        let pid = parameters.pop_long()?;
+        let pid = usize::try_from(pid)?;
+        let pid = Pid::from(pid);
+        let mut system = System::new_all()
+            .map_err(|error| ristretto_types::Error::InternalError(error.to_string()))?;
+        system.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
+
+        let Some(process) = system.process(pid) else {
+            return Ok(Some(Value::Long(-1)));
+        };
+        let Some(parent) = process.parent() else {
+            return Ok(Some(Value::Long(-1)));
+        };
+        let parent_pid = parent.as_u32();
+        let parent_pid = i64::from(parent_pid);
+
+        Ok(Some(Value::Long(parent_pid)))
+    }
+    #[cfg(target_family = "wasm")]
+    {
+        let _ = parameters;
+        Err(JavaError::UnsupportedOperationException(
+            "java.lang.ProcessHandleImpl.parent0(JJ)J".to_string(),
+        )
+        .into())
+    }
+}
+
+#[intrinsic_method(
+    "java/lang/ProcessHandleImpl.waitForProcessExit0(JZ)I",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub async fn wait_for_process_exit_0<T: Thread + 'static>(
+    _thread: Arc<T>,
+    #[cfg_attr(target_family = "wasm", expect(unused_mut))] mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    #[cfg(not(target_family = "wasm"))]
+    {
+        let _reap_status = parameters.pop_bool()?;
+        let pid = parameters.pop_long()?;
+        let pid_usize = usize::try_from(pid)?;
+
+        let exit_code = tokio::task::spawn_blocking(move || -> Result<i32> {
+            let sys_pid = Pid::from(pid_usize);
+            let mut system = System::new_all()
+                .map_err(|error| ristretto_types::Error::InternalError(error.to_string()))?;
+            system.refresh_processes(ProcessesToUpdate::Some(&[sys_pid]), true);
+
+            let Some(process) = system.process(sys_pid) else {
+                return Ok(0);
+            };
+
+            process.wait();
+            Ok(0)
+        })
+        .await
+        .map_err(|e| ristretto_types::Error::InternalError(e.to_string()))??;
+
+        Ok(Some(Value::Int(exit_code)))
+    }
+    #[cfg(target_family = "wasm")]
+    {
+        let _ = parameters;
+        Err(JavaError::UnsupportedOperationException(
+            "java.lang.ProcessHandleImpl.waitForProcessExit0(JZ)I".to_string(),
+        )
+        .into())
+    }
+}
+
+#[cfg(all(test, not(target_family = "wasm")))]
+mod tests {
+    use super::*;
+
+    #[cfg(not(target_family = "wasm"))]
+    use std::process;
+    use std::time::Duration;
+
+    fn waiting_child() -> std::io::Result<tokio::process::Child> {
+        #[cfg(windows)]
+        let mut command = {
+            let mut command = tokio::process::Command::new("cmd.exe");
+            command.args(["/C", "set /p line="]);
+            command
+        };
+        #[cfg(not(windows))]
+        let mut command = {
+            let mut command = tokio::process::Command::new("/bin/sh");
+            command.args(["-c", "read line"]);
+            command
+        };
+        command
+            .stdin(process::Stdio::piped())
+            .stdout(process::Stdio::null())
+            .stderr(process::Stdio::null())
+            .kill_on_drop(true)
+            .spawn()
+    }
+
+    #[tokio::test]
+    async fn test_process_pids_and_parent() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let mut child = waiting_child().expect("child process");
+        let child_pid = i64::from(child.id().expect("child pid"));
+        let gc = thread.vm().expect("vm").garbage_collector().clone();
+        let pids = Value::new_object(&gc, Reference::from(vec![0i64]));
+        let parents = Value::new_object(&gc, Reference::from(vec![0i64]));
+        let starts = Value::new_object(&gc, Reference::from(vec![0i64]));
+        let result = get_process_pids_0(
+            thread.clone(),
+            Parameters::new(vec![
+                Value::Long(child_pid),
+                pids.clone(),
+                parents.clone(),
+                starts.clone(),
+            ]),
+        )
+        .expect("process information");
+        assert_eq!(result, Some(Value::Int(1)));
+        for (value, expected) in [(&pids, child_pid), (&parents, i64::from(process::id()))] {
+            assert_eq!(&*value.as_long_vec_ref().expect("long array"), &[expected]);
+        }
+        assert!(
+            starts
+                .as_long_vec_ref()
+                .expect("start times")
+                .iter()
+                .all(|start| *start > 0)
+        );
+        let result = parent_0(
+            thread.clone(),
+            Parameters::new(vec![Value::Long(child_pid), Value::Long(0)]),
+        )
+        .expect("parent pid");
+        assert_eq!(result, Some(Value::Long(i64::from(process::id()))));
+        let result = destroy_0(
+            thread,
+            Parameters::new(vec![
+                Value::Long(child_pid),
+                Value::Long(0),
+                Value::from(true),
+            ]),
+        )
+        .expect("destroy child");
+        assert_eq!(result, Some(Value::from(true)));
+        child.wait().await.expect("reap child");
+    }
+
+    #[tokio::test]
+    async fn test_get_all_process_pids() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let gc = thread.vm().expect("vm").garbage_collector().clone();
+        let pids = Value::new_object(&gc, Reference::from(vec![-1i64]));
+        let parents = Value::new_object(&gc, Reference::from(vec![0i64]));
+        let starts = Value::new_object(&gc, Reference::from(vec![0i64]));
+        let result = get_process_pids_0(
+            thread,
+            Parameters::new(vec![Value::Long(0), pids.clone(), parents, starts]),
+        )
+        .expect("process enumeration");
+        // The count includes processes beyond the capacity of the output arrays.
+        assert!(result.expect("process count").as_i32().expect("int") > 0);
+        let array = pids.as_long_vec_ref().expect("pids");
+        assert_eq!(array.len(), 1);
+        assert!(array.iter().all(|pid| *pid >= 0));
+    }
+
+    #[tokio::test]
+    async fn test_missing_process() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        // This is outside the PID range on the supported native test platforms.
+        let pid = Value::Long(i64::from(i32::MAX));
+        assert_eq!(
+            destroy_0(
+                thread.clone(),
+                Parameters::new(vec![pid.clone(), Value::Long(0), Value::from(true)]),
+            )
+            .expect("destroy missing process"),
+            Some(Value::from(false))
+        );
+        assert_eq!(
+            parent_0(
+                thread.clone(),
+                Parameters::new(vec![pid.clone(), Value::Long(0)]),
+            )
+            .expect("missing parent"),
+            Some(Value::Long(-1))
+        );
+        assert_eq!(
+            is_alive_0(thread.clone(), Parameters::new(vec![pid.clone()]))
+                .expect("missing process status"),
+            Some(Value::Long(-1))
+        );
+        assert_eq!(
+            wait_for_process_exit_0(thread, Parameters::new(vec![pid, Value::from(false)]),)
+                .await
+                .expect("wait for missing process"),
+            Some(Value::Int(0))
+        );
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_process_exit_0() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let mut child = waiting_child().expect("child process");
+        let pid = i64::from(child.id().expect("child pid"));
+        let input = child.stdin.take();
+        let release_child = async move {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            drop(input);
+        };
+        let (result, ()) = tokio::join!(
+            wait_for_process_exit_0(
+                thread,
+                Parameters::new(vec![Value::Long(pid), Value::from(true)]),
+            ),
+            release_child,
+        );
+        assert_eq!(result.expect("wait for child"), Some(Value::Int(0)));
+        // sysinfo may already have reaped the child on Unix.
+        let _ = child.wait().await;
+    }
+
+    #[tokio::test]
+    async fn test_get_current_pid_0() -> Result<()> {
+        let (_vm, thread) = crate::test::thread().await?;
+        let result = get_current_pid_0(thread, Parameters::default())?;
+        let pid = i64::from(process::id());
+        assert_eq!(result, Some(Value::Long(pid)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_init_native() -> Result<()> {
+        let (_vm, thread) = crate::test::thread().await?;
+        let result = init_native(thread, Parameters::default())?;
+        assert_eq!(result, None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_is_alive_0() -> Result<()> {
+        let (_vm, thread) = crate::test::thread().await?;
+        let pid = Value::Long(i64::from(process::id()));
+        let result = is_alive_0(thread, Parameters::new(vec![pid]))?;
+        let start_time = result.unwrap_or(Value::Long(0)).as_i64()?;
+        assert!(start_time > 0);
+        Ok(())
+    }
+}

@@ -2501,6 +2501,30 @@ pub fn update_game(
         }
     }
     while core.tick_accumulator >= TICK_RATE {
+        let player = &game.player;
+        let fabric_state = format!(
+            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+            player.position.x,
+            player.position.y,
+            player.position.z,
+            player.health,
+            player.max_health,
+            player.food,
+            player.armor,
+            player.absorption,
+            player.velocity.x,
+            player.velocity.y,
+            player.velocity.z,
+            player.on_ground,
+            player.sprinting,
+            player.crouching,
+            player.flying,
+            game.paused,
+            game.dead,
+            game.tick_count,
+            game.singleplayer,
+        );
+        core.dispatch_fabric_event("dispatchClientTickStart", &fabric_state);
         game.tick_count = game.tick_count.wrapping_add(1);
         if !game.deterministic {
             game.block_light_flicker = tick_block_light_flicker(game.block_light_flicker);
@@ -2589,6 +2613,30 @@ pub fn update_game(
             game.xp_display_start_tick = game.tick_count as i64;
         }
         AppCore::send_client_tick_end(connection);
+        let player = &game.player;
+        let fabric_state = format!(
+            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+            player.position.x,
+            player.position.y,
+            player.position.z,
+            player.health,
+            player.max_health,
+            player.food,
+            player.armor,
+            player.absorption,
+            player.velocity.x,
+            player.velocity.y,
+            player.velocity.z,
+            player.on_ground,
+            player.sprinting,
+            player.crouching,
+            player.flying,
+            game.paused,
+            game.dead,
+            game.tick_count,
+            game.singleplayer,
+        );
+        core.dispatch_fabric_event("dispatchClientTickEnd", &fabric_state);
         core.tick_accumulator -= TICK_RATE;
     }
     if ticked {

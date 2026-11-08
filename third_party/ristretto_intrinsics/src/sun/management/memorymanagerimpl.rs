@@ -1,0 +1,33 @@
+use ristretto_classfile::VersionSpecification::Any;
+use ristretto_classloader::Value;
+use ristretto_macros::intrinsic_method;
+use ristretto_types::JavaError;
+use ristretto_types::Thread;
+use ristretto_types::{Parameters, Result};
+use std::sync::Arc;
+
+#[intrinsic_method(
+    "sun/management/MemoryManagerImpl.getMemoryPools0()[Ljava/lang/management/MemoryPoolMXBean;",
+    Any
+)]
+pub fn get_memory_pools_0<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Err(JavaError::UnsatisfiedLinkError("sun.management.MemoryManagerImpl.getMemoryPools0()[Ljava/lang/management/MemoryPoolMXBean;".to_string()).into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_get_memory_pools_0() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = get_memory_pools_0(thread, Parameters::default());
+        assert_eq!(
+            "sun.management.MemoryManagerImpl.getMemoryPools0()[Ljava/lang/management/MemoryPoolMXBean;",
+            result.unwrap_err().to_string()
+        );
+    }
+}

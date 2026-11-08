@@ -920,6 +920,8 @@ pub struct AppCore {
     pub input: InputState,
     pub menu: MainMenu,
     pub tokio_rt: Arc<tokio::runtime::Runtime>,
+    /// Persistent Java/Fabric VM used for mod callbacks during gameplay.
+    pub fabric_session: Option<pomme_jvm::ristretto_backend::FabricSession>,
     pub data_dirs: DataDirs,
     pub version: String,
     pub resource_packs: ResourcePackManager,
@@ -1061,11 +1063,17 @@ impl AppCore {
         user: UserData,
         window_size: winit::dpi::LogicalSize<u32>,
     ) -> Self {
-        if let Err(error) = data_dirs.ensure_mods_dir() {
+        let fabric_session = if let Err(error) = data_dirs.ensure_mods_dir() {
             tracing::warn!("Could not create version-specific Java mods directory: {error}");
+            None
         } else {
-            crate::java_mods::initialize_installed(&data_dirs.mods_dir, &version, &user.username);
-        }
+            crate::java_mods::initialize_installed(
+                &data_dirs.mods_dir,
+                &version,
+                &user.username,
+                &tokio_rt,
+            )
+        };
 
         let resource_packs = ResourcePackManager::new(&data_dirs.game_dir);
 
@@ -1095,6 +1103,7 @@ impl AppCore {
             input,
             menu,
             tokio_rt,
+            fabric_session,
             data_dirs,
             version,
             resource_packs,
@@ -1122,6 +1131,23 @@ impl AppCore {
             inline_atlas_dirty: false,
             player_faces_packed: false,
             game_dynamic_atlas_keys: HashSet::new(),
+        }
+    }
+
+    /// Dispatch one Fabric lifecycle event into the retained JVM. A failed
+    /// callback disables the session rather than repeatedly stalling frames.
+    pub fn dispatch_fabric_event(&mut self, method: &str, state: &str) {
+        let result = self.fabric_session.as_ref().map(|session| {
+            self.tokio_rt.block_on(async {
+                session.set_system_property("pomme.state", state).await?;
+                session
+                    .invoke_static_void("PommeGameProvider", method)
+                    .await
+            })
+        });
+        if let Some(Err(error)) = result {
+            tracing::error!("Disabling Java mod runtime after Fabric callback failure: {error}");
+            self.fabric_session = None;
         }
     }
 

@@ -1,0 +1,651 @@
+use crate::bounds;
+use crate::java::io::filedescriptor;
+use crate::java::io::filedescriptor::file_descriptor_from_java_object;
+#[cfg(not(all(target_family = "wasm", not(target_os = "wasi"))))]
+use crate::java::io::filedescriptor::raw_file_descriptor;
+#[cfg(not(all(target_family = "wasm", not(target_os = "wasi"))))]
+use ristretto_classfile::JAVA_11;
+use ristretto_classfile::JAVA_21;
+use ristretto_classfile::VersionSpecification::{Any, GreaterThanOrEqual, LessThanOrEqual};
+use ristretto_classfile::{JAVA_8, JAVA_17};
+use ristretto_classloader::{Reference, Value};
+use ristretto_macros::intrinsic_method;
+#[cfg(all(target_family = "wasm", not(target_os = "wasi")))]
+use ristretto_types::JavaError::RuntimeException;
+use ristretto_types::JavaError::{FileNotFoundException, IoException};
+use ristretto_types::Thread;
+use ristretto_types::VM;
+#[cfg(not(all(target_family = "wasm", not(target_os = "wasi"))))]
+use ristretto_types::handles::FileHandle;
+use ristretto_types::handles::FileModeFlags;
+use ristretto_types::{Parameters, Result};
+#[cfg(target_os = "wasi")]
+use std::fs::OpenOptions;
+#[cfg(not(all(target_family = "wasm", not(target_os = "wasi"))))]
+use std::io::SeekFrom;
+#[cfg(target_os = "wasi")]
+use std::io::{Read, Seek, Write};
+#[cfg(not(all(target_family = "wasm", not(target_os = "wasi"))))]
+use std::path::PathBuf;
+use std::sync::Arc;
+#[cfg(not(target_family = "wasm"))]
+use tokio::fs::OpenOptions;
+#[cfg(not(target_family = "wasm"))]
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
+use zerocopy::transmute_ref;
+
+#[cfg(target_os = "windows")]
+const RANDOM_ACCESS_SHARE_MODE: u32 = 0x0000_0003;
+
+#[cfg(not(all(target_family = "wasm", not(target_os = "wasi"))))]
+fn resolve_path<T: Thread + 'static>(thread: &Arc<T>, path: &str) -> Result<PathBuf> {
+    let path_buf = PathBuf::from(path);
+    if path_buf.is_absolute() {
+        return Ok(path_buf);
+    }
+    let vm = thread.vm()?;
+    if let Some(user_dir) = vm.system_properties().get("user.dir") {
+        Ok(PathBuf::from(user_dir).join(path_buf))
+    } else {
+        Ok(path_buf)
+    }
+}
+
+#[intrinsic_method("java/io/RandomAccessFile.close0()V", LessThanOrEqual(JAVA_8))]
+pub async fn close_0<T: Thread + 'static>(
+    thread: Arc<T>,
+    parameters: Parameters,
+) -> Result<Option<Value>> {
+    filedescriptor::close_0(thread, parameters).await
+}
+
+#[intrinsic_method("java/io/RandomAccessFile.getFilePointer()J", Any)]
+pub async fn get_file_pointer<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let random_access_file = parameters.pop()?;
+    let file_descriptor = {
+        let random_access_file = random_access_file.as_object_ref()?;
+        random_access_file.value("fd")?
+    };
+    let vm = thread.vm()?;
+    let file_handles = vm.file_handles();
+    let fd = file_descriptor_from_java_object(&vm, &file_descriptor)?;
+    if fd < 0 {
+        return Err(IoException("Stream Closed".to_string()).into());
+    }
+    let mut file_handle = file_handles
+        .get_mut(&fd)
+        .await
+        .ok_or_else(|| IoException(format!("File handle not found: {fd}")))?;
+    let file = &mut file_handle.file;
+    let position: u64;
+
+    #[cfg(all(target_family = "wasm", not(target_os = "wasi")))]
+    {
+        let _ = file;
+        position = 0;
+    }
+
+    #[cfg(target_os = "wasi")]
+    {
+        position = file.stream_position()?;
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    {
+        position = file.stream_position().await?;
+    }
+
+    let position = i64::try_from(position)?;
+    Ok(Some(Value::Long(position)))
+}
+
+#[intrinsic_method("java/io/RandomAccessFile.initIDs()V", Any)]
+pub fn init_ids<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Ok(None)
+}
+
+#[intrinsic_method("java/io/RandomAccessFile.length()J", LessThanOrEqual(JAVA_17))]
+pub async fn length<T: Thread + 'static>(
+    thread: Arc<T>,
+    parameters: Parameters,
+) -> Result<Option<Value>> {
+    length_0(thread, parameters).await
+}
+
+#[intrinsic_method("java/io/RandomAccessFile.length0()J", GreaterThanOrEqual(JAVA_21))]
+pub async fn length_0<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let random_access_file = parameters.pop()?;
+    let file_descriptor = {
+        let random_access_file = random_access_file.as_object_ref()?;
+        random_access_file.value("fd")?
+    };
+    let vm = thread.vm()?;
+    let file_handles = vm.file_handles();
+    let fd = file_descriptor_from_java_object(&vm, &file_descriptor)?;
+    if fd < 0 {
+        return Err(IoException("Stream Closed".to_string()).into());
+    }
+    let file_handle = file_handles
+        .get(&fd)
+        .await
+        .ok_or_else(|| IoException(format!("File handle not found: {fd}")))?;
+    let file = &file_handle.file;
+    let length: u64;
+
+    #[cfg(all(target_family = "wasm", not(target_os = "wasi")))]
+    {
+        let _ = file;
+        length = 0;
+    }
+
+    #[cfg(target_os = "wasi")]
+    {
+        let metadata = file.metadata()?;
+        length = metadata.len();
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    {
+        let metadata = file.metadata().await?;
+        length = metadata.len();
+    }
+
+    let length = i64::try_from(length)?;
+    Ok(Some(Value::Long(length)))
+}
+
+#[intrinsic_method("java/io/RandomAccessFile.open0(Ljava/lang/String;I)V", Any)]
+pub async fn open_0<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let mode = u16::try_from(parameters.pop_int()?)?;
+    let mode = FileModeFlags::from_bits_truncate(mode);
+    let path = parameters.pop()?.as_string()?;
+    let random_access_file = parameters.pop()?;
+    let file_descriptor = {
+        let random_access_file = random_access_file.as_object_ref()?;
+        random_access_file.value("fd")?
+    };
+
+    if path.is_empty() {
+        return Err(FileNotFoundException("File path is empty".to_string()).into());
+    }
+
+    #[cfg(all(target_family = "wasm", not(target_os = "wasi")))]
+    {
+        let _ = thread;
+        let _ = mode;
+        let _ = file_descriptor;
+        Err(RuntimeException(
+            "java.io.RandomAccessFile.open0(Ljava/lang/String;I)V is not supported on WebAssembly"
+                .to_string(),
+        )
+        .into())
+    }
+
+    #[cfg(not(all(target_family = "wasm", not(target_os = "wasi"))))]
+    {
+        let resolved_path = resolve_path(&thread, &path)?;
+        let file_result;
+
+        #[cfg(target_os = "wasi")]
+        {
+            file_result = match mode {
+                FileModeFlags::READ_ONLY => OpenOptions::new()
+                    .read(true)
+                    .write(false)
+                    .create(false)
+                    .open(&resolved_path),
+                _ => OpenOptions::new()
+                    .create(true)
+                    .truncate(false)
+                    .read(true)
+                    .write(true)
+                    .open(&resolved_path),
+            };
+        }
+
+        #[cfg(not(target_family = "wasm"))]
+        {
+            let mut options = OpenOptions::new();
+            match mode {
+                FileModeFlags::READ_ONLY => {
+                    options.read(true).write(false).create(false);
+                }
+                _ => {
+                    options.create(true).truncate(false).read(true).write(true);
+                }
+            }
+            #[cfg(target_os = "windows")]
+            {
+                // RandomAccessFile shares reads and writes, but deliberately denies deletion.
+                // FILE_SHARE_READ | FILE_SHARE_WRITE
+                options.share_mode(RANDOM_ACCESS_SHARE_MODE);
+            }
+            file_result = options.open(&resolved_path).await;
+        }
+
+        match file_result {
+            Ok(file) => {
+                let fd = raw_file_descriptor(&file)?;
+                let vm = thread.vm()?;
+                let file_handles = vm.file_handles();
+                let file_handle: FileHandle = (file, mode).into();
+                file_handles.insert(fd, file_handle).await?;
+
+                {
+                    let mut file_descriptor = file_descriptor.as_object_mut()?;
+                    file_descriptor.set_value("fd", Value::Int(i32::try_from(fd)?))?;
+                    if vm.java_class_file_version() >= &JAVA_11 {
+                        file_descriptor.set_value("handle", Value::Long(fd))?;
+                    }
+                }
+                {
+                    let mut random_access_file = random_access_file.as_object_mut()?;
+                    let read_and_write = mode != FileModeFlags::READ_ONLY;
+                    random_access_file.set_value("rw", Value::from(read_and_write))?;
+                }
+                Ok(None)
+            }
+            Err(error) => Err(FileNotFoundException(
+                [
+                    &path,
+                    " (",
+                    &crate::java::io::filesystem::open_error_message(&error),
+                    ")",
+                ]
+                .concat(),
+            )
+            .into()),
+        }
+    }
+}
+
+#[intrinsic_method("java/io/RandomAccessFile.read0()I", Any)]
+pub async fn read_0<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let random_access_fie = parameters.pop()?;
+    let bytes = Value::new_object(
+        thread.vm()?.garbage_collector(),
+        Reference::from(vec![0i8; 1]),
+    );
+    let mut parameters = Parameters::default();
+    parameters.push(random_access_fie);
+    parameters.push(bytes.clone());
+    parameters.push_int(0); // offset
+    parameters.push_int(1); // length
+
+    let mut result = -1; // Default to -1 if no byte is read
+    if let Some(Value::Int(read_result)) = read_bytes_0(thread, parameters).await? {
+        result = read_result;
+    }
+    if result > 0 {
+        let bytes = bytes.as_byte_vec_ref()?;
+        let byte = bytes.first().copied().unwrap_or_default();
+        #[expect(clippy::cast_sign_loss)]
+        let byte = byte as u8;
+        result = i32::from(byte);
+    }
+
+    Ok(Some(Value::Int(result)))
+}
+
+#[intrinsic_method("java/io/RandomAccessFile.readBytes([BII)I", LessThanOrEqual(JAVA_17))]
+pub async fn read_bytes<T: Thread + 'static>(
+    thread: Arc<T>,
+    parameters: Parameters,
+) -> Result<Option<Value>> {
+    read_bytes_0(thread, parameters).await
+}
+
+#[intrinsic_method(
+    "java/io/RandomAccessFile.readBytes0([BII)I",
+    GreaterThanOrEqual(JAVA_21)
+)]
+pub async fn read_bytes_0<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let length = usize::try_from(parameters.pop_int()?)?;
+    let offset = usize::try_from(parameters.pop_int()?)?;
+    let bytes = parameters.pop_reference()?;
+    let random_access_file = parameters.pop()?;
+    let file_descriptor = {
+        let random_access_file = random_access_file.as_object_ref()?;
+        random_access_file.value("fd")?
+    };
+    let vm = thread.vm()?;
+    let fd = file_descriptor_from_java_object(&vm, &file_descriptor)?;
+    if fd < 0 {
+        return Err(IoException("Stream Closed".to_string()).into());
+    }
+
+    let file_handles = vm.file_handles();
+    let mut file_handle = file_handles
+        .get_mut(&fd)
+        .await
+        .ok_or_else(|| IoException(format!("File handle not found: {fd}")))?;
+    let file = &mut file_handle.file;
+
+    let mut buffer = vec![0u8; length];
+    let bytes_read: usize;
+
+    #[cfg(all(target_family = "wasm", not(target_os = "wasi")))]
+    {
+        let _ = file;
+        bytes_read = 0;
+        buffer.resize(bytes_read, 0);
+    }
+
+    #[cfg(target_os = "wasi")]
+    {
+        let buffer_slice =
+            bounds::range_mut(&mut buffer, 0..length, "RandomAccessFile.read buffer")?;
+        bytes_read = file
+            .read(buffer_slice)
+            .map_err(|error| IoException(error.to_string()))?;
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    {
+        let buffer_slice =
+            bounds::range_mut(&mut buffer, 0..length, "RandomAccessFile.read buffer")?;
+        bytes_read = file
+            .read(buffer_slice)
+            .await
+            .map_err(|error| IoException(error.to_string()))?;
+    }
+
+    let Some(bytes_ref) = bytes else {
+        return Err(IoException("Cannot read bytes from reference".to_string()).into());
+    };
+    let mut bytes_guard = bytes_ref.write();
+    let Reference::ByteArray(ref mut bytes) = *bytes_guard else {
+        return Err(IoException("Cannot read bytes from reference".to_string()).into());
+    };
+    let bytes_read = if bytes_read == 0 && length > 0 {
+        -1
+    } else {
+        let buffer: &[i8] = transmute_ref!(buffer.as_slice());
+        if bytes_read > 0 {
+            let end = offset
+                .checked_add(bytes_read)
+                .ok_or_else(|| IoException("Read destination range overflow".to_string()))?;
+            let target =
+                bounds::range_mut(bytes, offset..end, "RandomAccessFile.read destination")?;
+            let source = bounds::range_to(buffer, ..bytes_read, "RandomAccessFile.read source")?;
+            target.copy_from_slice(source);
+        }
+        i32::try_from(bytes_read)?
+    };
+    Ok(Some(Value::Int(bytes_read)))
+}
+
+#[intrinsic_method("java/io/RandomAccessFile.seek0(J)V", Any)]
+pub async fn seek_0<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let position = u64::try_from(parameters.pop_long()?)?;
+    let random_access_file = parameters.pop()?;
+    let file_descriptor = {
+        let random_access_file = random_access_file.as_object_ref()?;
+        random_access_file.value("fd")?
+    };
+    let vm = thread.vm()?;
+    let file_handles = vm.file_handles();
+    let fd = file_descriptor_from_java_object(&vm, &file_descriptor)?;
+    if fd < 0 {
+        return Err(IoException("Stream Closed".to_string()).into());
+    }
+    let mut file_handle = file_handles
+        .get_mut(&fd)
+        .await
+        .ok_or_else(|| IoException(format!("File handle not found: {fd}")))?;
+    let file = &mut file_handle.file;
+
+    #[cfg(all(target_family = "wasm", not(target_os = "wasi")))]
+    {
+        let _ = position;
+        let _ = file;
+    }
+
+    #[cfg(target_os = "wasi")]
+    let _ = file.seek(SeekFrom::Start(position))?;
+
+    #[cfg(not(target_family = "wasm"))]
+    let _ = file.seek(SeekFrom::Start(position)).await?;
+
+    Ok(None)
+}
+
+#[intrinsic_method("java/io/RandomAccessFile.setLength(J)V", LessThanOrEqual(JAVA_17))]
+pub async fn set_length<T: Thread + 'static>(
+    thread: Arc<T>,
+    parameters: Parameters,
+) -> Result<Option<Value>> {
+    set_length_0(thread, parameters).await
+}
+
+#[intrinsic_method("java/io/RandomAccessFile.setLength0(J)V", GreaterThanOrEqual(JAVA_21))]
+pub async fn set_length_0<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let length = u64::try_from(parameters.pop_long()?)?;
+    let random_access_file = parameters.pop()?;
+    let file_descriptor = {
+        let random_access_file = random_access_file.as_object_ref()?;
+        random_access_file.value("fd")?
+    };
+    let vm = thread.vm()?;
+    let file_handles = vm.file_handles();
+    let fd = file_descriptor_from_java_object(&vm, &file_descriptor)?;
+    if fd < 0 {
+        return Err(IoException("Stream Closed".to_string()).into());
+    }
+    let file_handle = file_handles
+        .get_mut(&fd)
+        .await
+        .ok_or_else(|| IoException(format!("File handle not found: {fd}")))?;
+    let file = &file_handle.file;
+
+    #[cfg(all(target_family = "wasm", not(target_os = "wasi")))]
+    {
+        let _ = length;
+        let _ = file;
+    }
+
+    #[cfg(target_os = "wasi")]
+    file.set_len(length)
+        .map_err(|error| IoException(error.to_string()))?;
+
+    #[cfg(not(target_family = "wasm"))]
+    file.set_len(length)
+        .await
+        .map_err(|error| IoException(error.to_string()))?;
+
+    Ok(None)
+}
+
+#[intrinsic_method("java/io/RandomAccessFile.write0(I)V", Any)]
+pub async fn write_0<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let byte = i8::from_ne_bytes([parameters.pop_int()?.to_le_bytes()[0]]);
+    let random_access_file = parameters.pop()?;
+    let bytes = Value::new_object(
+        thread.vm()?.garbage_collector(),
+        Reference::from(vec![byte]),
+    );
+    let mut parameters = Parameters::default();
+    parameters.push(random_access_file);
+    parameters.push(bytes);
+    parameters.push_int(0); // offset
+    parameters.push_int(1); // length
+    write_bytes(thread, parameters).await
+}
+
+#[intrinsic_method("java/io/RandomAccessFile.writeBytes([BII)V", LessThanOrEqual(JAVA_17))]
+pub async fn write_bytes<T: Thread + 'static>(
+    thread: Arc<T>,
+    parameters: Parameters,
+) -> Result<Option<Value>> {
+    write_bytes_0(thread, parameters).await
+}
+
+#[intrinsic_method(
+    "java/io/RandomAccessFile.writeBytes0([BII)V",
+    GreaterThanOrEqual(JAVA_21)
+)]
+pub async fn write_bytes_0<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let length = usize::try_from(parameters.pop_int()?)?;
+    let offset = usize::try_from(parameters.pop_int()?)?;
+    let bytes = parameters.pop()?;
+    let bytes = {
+        let bytes = bytes.as_byte_vec_ref()?;
+        let bytes: &[u8] = transmute_ref!(&*bytes);
+        bytes.to_vec()
+    };
+    let file_output_stream = parameters.pop()?;
+    let file_descriptor = {
+        let file_output_stream = file_output_stream.as_object_ref()?;
+        file_output_stream.value("fd")?
+    };
+    let vm = thread.vm()?;
+    let fd = file_descriptor_from_java_object(&vm, &file_descriptor)?;
+    if fd < 0 {
+        return Err(IoException("Stream Closed".to_string()).into());
+    }
+
+    let file_handles = vm.file_handles();
+    let mut file_handle = file_handles
+        .get_mut(&fd)
+        .await
+        .ok_or_else(|| IoException(format!("File handle not found: {fd}")))?;
+    if file_handle.mode == FileModeFlags::READ_ONLY {
+        #[cfg(target_os = "windows")]
+        let message = crate::java::io::filesystem::access_denied_message();
+        #[cfg(not(target_os = "windows"))]
+        let message = "Bad file descriptor";
+        return Err(IoException(message.to_string()).into());
+    }
+    let mode = file_handle.mode;
+    let file = &mut file_handle.file;
+
+    #[cfg(all(target_family = "wasm", not(target_os = "wasi")))]
+    {
+        let _ = length;
+        let _ = offset;
+        let _ = bytes;
+        let _ = file;
+    }
+
+    #[cfg(target_os = "wasi")]
+    {
+        let end = offset
+            .checked_add(length)
+            .ok_or_else(|| IoException("Write source range overflow".to_string()))?;
+        let source = bounds::range(&bytes, offset..end, "RandomAccessFile.write")?;
+        file.write_all(source)
+            .map_err(|error| IoException(error.to_string()))?;
+        file.flush()
+            .map_err(|error| IoException(error.to_string()))?;
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    {
+        let end = offset
+            .checked_add(length)
+            .ok_or_else(|| IoException("Write source range overflow".to_string()))?;
+        let source = bounds::range(&bytes, offset..end, "RandomAccessFile.write")?;
+        file.write_all(source)
+            .await
+            .map_err(|error| IoException(error.to_string()))?;
+        file.flush()
+            .await
+            .map_err(|error| IoException(error.to_string()))?;
+    }
+
+    match mode {
+        FileModeFlags::READ_ONLY => {
+            return Err(IoException(format!(
+                "Cannot read from file opened in read-only mode: {fd}"
+            ))
+            .into());
+        }
+        FileModeFlags::SYNCHRONIZE_ALL => {
+            #[cfg(target_os = "wasi")]
+            file.sync_all()
+                .map_err(|error| IoException(error.to_string()))?;
+
+            #[cfg(not(target_family = "wasm"))]
+            file.sync_all()
+                .await
+                .map_err(|error| IoException(error.to_string()))?;
+        }
+        FileModeFlags::SYNCHRONIZE_DATA => {
+            #[cfg(target_os = "wasi")]
+            file.sync_data()
+                .map_err(|error| IoException(error.to_string()))?;
+
+            #[cfg(not(target_family = "wasm"))]
+            file.sync_data()
+                .await
+                .map_err(|error| IoException(error.to_string()))?;
+        }
+        _ => {
+            // Nothing required for other modes
+        }
+    }
+    Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_init_ids() -> Result<()> {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = init_ids(thread, Parameters::default())?;
+        assert_eq!(None, result);
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[cfg(target_os = "windows")]
+    async fn test_writable_random_access_files_share_writes() {
+        let directory = tempfile::tempdir().expect("temp directory");
+        let path = directory.path().join("shared-random-access-file");
+        let open = || {
+            let mut options = OpenOptions::new();
+            options
+                .create(true)
+                .read(true)
+                .write(true)
+                .share_mode(RANDOM_ACCESS_SHARE_MODE);
+            options
+        };
+
+        let _first = open().open(&path).await.expect("first writable open");
+        let _second = open().open(&path).await.expect("second writable open");
+        assert!(std::fs::remove_file(&path).is_err());
+    }
+}

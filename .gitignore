@@ -3,3 +3,13 @@
 /test-server
 /logs
 /tools/stategen/out
+
+# Generated local iOS builds and embedded Java/Fabric runtime bundles
+/pomme-ios/build/
+/pomme-ios/Resources/FabricRuntime/
+/pomme-ios/Resources/JavaRuntime/
+/release-staging/
+/pomme-jvm/logs/
+/pomme-jvm/examples/*/build/
+/third_party/ristretto_intrinsics/Cargo.lock
+/third_party/ristretto_intrinsics/Cargo.toml.orig

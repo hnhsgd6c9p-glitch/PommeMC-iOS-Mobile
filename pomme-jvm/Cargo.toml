@@ -3,7 +3,7 @@ name = "pomme-jvm"
 version = "0.1.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
-description = "A Rust-implemented JVM execution runtime for Pomme"
+description = "Java runtime integration and Fabric mod execution for Pomme"
 
 [dependencies]
 thiserror = { workspace = true }
@@ -11,3 +11,6 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 zip = { workspace = true }
 pomme-mod = { path = "../pomme-mod" }
+ristretto_vm = { version = "=0.35.0", default-features = false, features = ["tls-rustls-ring", "url"] }
+ristretto_classloader = { version = "=0.35.0" }
+tokio = { workspace = true }

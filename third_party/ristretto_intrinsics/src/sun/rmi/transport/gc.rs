@@ -1,0 +1,31 @@
+use ristretto_classfile::JAVA_11;
+use ristretto_classfile::VersionSpecification::GreaterThanOrEqual;
+use ristretto_classloader::Value;
+use ristretto_macros::intrinsic_method;
+use ristretto_types::Thread;
+use ristretto_types::{Parameters, Result};
+use std::sync::Arc;
+
+#[intrinsic_method(
+    "sun/rmi/transport/GC.maxObjectInspectionAge()J",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn max_object_inspection_age<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Ok(Some(Value::Long(0)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_max_object_inspection_age() -> Result<()> {
+        let (_vm, thread) = crate::test::java11_thread().await?;
+        let result = max_object_inspection_age(thread, Parameters::default())?;
+        assert_eq!(result, Some(Value::Long(0)));
+        Ok(())
+    }
+}

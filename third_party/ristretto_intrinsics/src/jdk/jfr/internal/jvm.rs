@@ -1,0 +1,2003 @@
+use ristretto_classfile::VersionSpecification::{Between, Equal, GreaterThan, GreaterThanOrEqual};
+use ristretto_classfile::{JAVA_11, JAVA_17, JAVA_21, JAVA_25};
+use ristretto_classloader::Value;
+use ristretto_macros::intrinsic_method;
+use ristretto_types::JavaError;
+use ristretto_types::Thread;
+use ristretto_types::{Parameters, Result};
+use std::sync::Arc;
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.abort(Ljava/lang/String;)V",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn abort<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _arg0 = parameters.pop_reference()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.abort(Ljava/lang/String;)V".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.addStringConstant(JLjava/lang/String;)Z",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn add_string_constant<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _arg1 = parameters.pop_reference()?;
+    let _arg0 = parameters.pop_long()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.addStringConstant(JLjava/lang/String;)Z".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method("jdk/jfr/internal/JVM.beginRecording()V", GreaterThanOrEqual(JAVA_11))]
+pub fn begin_recording<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Err(
+        JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.beginRecording()V".to_string())
+            .into(),
+    )
+}
+
+#[intrinsic_method("jdk/jfr/internal/JVM.commit(J)J", GreaterThanOrEqual(JAVA_21))]
+pub fn commit<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _next_position = parameters.pop_long()?;
+    Err(JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.commit(J)J".to_string()).into())
+}
+
+#[intrinsic_method("jdk/jfr/internal/JVM.counterTime()J", GreaterThanOrEqual(JAVA_11))]
+pub fn counter_time<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Err(JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.counterTime()J".to_string()).into())
+}
+
+#[intrinsic_method("jdk/jfr/internal/JVM.createJFR(Z)Z", GreaterThanOrEqual(JAVA_11))]
+pub fn create_jfr<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _simulate_failure = parameters.pop_bool()?;
+    Err(JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.createJFR(Z)Z".to_string()).into())
+}
+
+#[intrinsic_method("jdk/jfr/internal/JVM.destroyJFR()Z", GreaterThanOrEqual(JAVA_11))]
+pub fn destroy_jfr<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Err(JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.destroyJFR()Z".to_string()).into())
+}
+
+#[intrinsic_method("jdk/jfr/internal/JVM.emitDataLoss(J)V", GreaterThanOrEqual(JAVA_17))]
+pub fn emit_data_loss<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _bytes = parameters.pop_long()?;
+    Err(JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.emitDataLoss(J)V".to_string()).into())
+}
+
+#[intrinsic_method("jdk/jfr/internal/JVM.emitEvent(JJJ)Z", GreaterThanOrEqual(JAVA_11))]
+pub fn emit_event<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _when = parameters.pop_long()?;
+    let _timestamp = parameters.pop_long()?;
+    let _event_type_id = parameters.pop_long()?;
+    Err(JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.emitEvent(JJJ)Z".to_string()).into())
+}
+
+#[intrinsic_method("jdk/jfr/internal/JVM.emitOldObjectSamples(JZ)V", Equal(JAVA_11))]
+pub fn emit_old_object_samples_0<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _emit_all = parameters.pop_bool()?;
+    let _cutoff = parameters.pop_long()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.emitOldObjectSamples(JZ)V".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.emitOldObjectSamples(JZZ)V",
+    GreaterThan(JAVA_11)
+)]
+pub fn emit_old_object_samples_1<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _skip_bfs = parameters.pop_bool()?;
+    let _emit_all = parameters.pop_bool()?;
+    let _cutoff = parameters.pop_long()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.emitOldObjectSamples(JZZ)V".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method("jdk/jfr/internal/JVM.endRecording()V", GreaterThanOrEqual(JAVA_11))]
+pub fn end_recording<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Err(JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.endRecording()V".to_string()).into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.exclude(Ljava/lang/Thread;)V",
+    GreaterThan(JAVA_11)
+)]
+pub fn exclude<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _arg0 = parameters.pop_reference()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.exclude(Ljava/lang/Thread;)V".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method("jdk/jfr/internal/JVM.flush()V", GreaterThan(JAVA_11))]
+pub fn flush_0<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Err(JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.flush()V".to_string()).into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.flush(Ljdk/jfr/internal/EventWriter;II)Z",
+    Between(JAVA_11, JAVA_17)
+)]
+pub fn flush_1<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _requested_size = parameters.pop_int()?;
+    let _uncommitted_size = parameters.pop_int()?;
+    let _writer = parameters.pop_reference()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.flush(Ljdk/jfr/internal/EventWriter;II)Z".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.flush(Ljdk/jfr/internal/event/EventWriter;II)V",
+    GreaterThanOrEqual(JAVA_21)
+)]
+pub fn flush_2<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _requested_size = parameters.pop_int()?;
+    let _uncommitted_size = parameters.pop_int()?;
+    let _writer = parameters.pop_reference()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.flush(Ljdk/jfr/internal/event/EventWriter;II)V".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.getAllEventClasses()Ljava/util/List;",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn get_all_event_classes<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.getAllEventClasses()Ljava/util/List;".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.getAllowedToDoEventRetransforms()Z",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn get_allowed_to_do_event_retransforms<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.getAllowedToDoEventRetransforms()Z".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method("jdk/jfr/internal/JVM.getChunkStartNanos()J", GreaterThan(JAVA_11))]
+pub fn get_chunk_start_nanos<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Err(
+        JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.getChunkStartNanos()J".to_string())
+            .into(),
+    )
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.getClassId(Ljava/lang/Class;)J",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn get_class_id<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _arg0 = parameters.pop_reference()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.getClassId(Ljava/lang/Class;)J".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.getClassIdNonIntrinsic(Ljava/lang/Class;)J",
+    Equal(JAVA_11)
+)]
+pub fn get_class_id_non_intrinsic<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _arg0 = parameters.pop_reference()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.getClassIdNonIntrinsic(Ljava/lang/Class;)J".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.getConfiguration(Ljava/lang/Class;)Ljava/lang/Object;",
+    GreaterThanOrEqual(JAVA_21)
+)]
+pub fn get_configuration<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _arg0 = parameters.pop_reference()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.getConfiguration(Ljava/lang/Class;)Ljava/lang/Object;".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.getDumpPath()Ljava/lang/String;",
+    GreaterThanOrEqual(JAVA_21)
+)]
+pub fn get_dump_path<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.getDumpPath()Ljava/lang/String;".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.getEventWriter()Ljava/lang/Object;",
+    Between(JAVA_11, JAVA_17)
+)]
+pub fn get_event_writer_0<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.getEventWriter()Ljava/lang/Object;".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.getEventWriter()Ljdk/jfr/internal/event/EventWriter;",
+    GreaterThanOrEqual(JAVA_21)
+)]
+pub fn get_event_writer_1<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.getEventWriter()Ljdk/jfr/internal/event/EventWriter;".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.getHandler(Ljava/lang/Class;)Ljava/lang/Object;",
+    Equal(JAVA_17)
+)]
+pub fn get_handler<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _arg0 = parameters.pop_reference()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.getHandler(Ljava/lang/Class;)Ljava/lang/Object;".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.getPid()Ljava/lang/String;",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn get_pid<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.getPid()Ljava/lang/String;".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method("jdk/jfr/internal/JVM.getStackTraceId(I)J", Between(JAVA_11, JAVA_21))]
+pub fn get_stack_trace_id_0<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _skip_count = parameters.pop_int()?;
+    Err(
+        JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.getStackTraceId(I)J".to_string())
+            .into(),
+    )
+}
+
+#[intrinsic_method("jdk/jfr/internal/JVM.getStackTraceId(IJ)J", GreaterThan(JAVA_21))]
+pub fn get_stack_trace_id_1<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _stack_filer_id = parameters.pop_long()?;
+    let _skip_count = parameters.pop_int()?;
+    Err(
+        JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.getStackTraceId(IJ)J".to_string())
+            .into(),
+    )
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.getThreadId(Ljava/lang/Thread;)J",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn get_thread_id<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _arg0 = parameters.pop_reference()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.getThreadId(Ljava/lang/Thread;)J".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.getTicksFrequency()J",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn get_ticks_frequency<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Err(
+        JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.getTicksFrequency()J".to_string())
+            .into(),
+    )
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.getTimeConversionFactor()D",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn get_time_conversion_factor<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.getTimeConversionFactor()D".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.getTypeId(Ljava/lang/String;)J",
+    GreaterThan(JAVA_11)
+)]
+pub fn get_type_id_0<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _arg0 = parameters.pop_reference()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.getTypeId(Ljava/lang/String;)J".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.getTypeId(Ljava/lang/Class;)J",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn get_type_id_1<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _arg0 = parameters.pop_reference()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.getTypeId(Ljava/lang/Class;)J".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.getUnloadedEventClassCount()J",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn get_unloaded_event_class_count<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.getUnloadedEventClassCount()J".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method("jdk/jfr/internal/JVM.hostTotalMemory()J", GreaterThanOrEqual(JAVA_21))]
+pub fn host_total_memory<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Err(
+        JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.hostTotalMemory()J".to_string())
+            .into(),
+    )
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.hostTotalSwapMemory()J",
+    GreaterThanOrEqual(JAVA_25)
+)]
+pub fn host_total_swap_memory<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Err(
+        JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.hostTotalSwapMemory()J".to_string())
+            .into(),
+    )
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.include(Ljava/lang/Thread;)V",
+    GreaterThan(JAVA_11)
+)]
+pub fn include<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _arg0 = parameters.pop_reference()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.include(Ljava/lang/Thread;)V".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method("jdk/jfr/internal/JVM.isAvailable()Z", GreaterThanOrEqual(JAVA_11))]
+pub fn is_available<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Err(JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.isAvailable()Z".to_string()).into())
+}
+
+#[intrinsic_method("jdk/jfr/internal/JVM.isContainerized()Z", GreaterThanOrEqual(JAVA_21))]
+pub fn is_containerized<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Err(
+        JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.isContainerized()Z".to_string())
+            .into(),
+    )
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.isExcluded(Ljava/lang/Thread;)Z",
+    GreaterThan(JAVA_11)
+)]
+pub fn is_excluded_0<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _arg0 = parameters.pop_reference()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.isExcluded(Ljava/lang/Thread;)Z".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.isExcluded(Ljava/lang/Class;)Z",
+    GreaterThanOrEqual(JAVA_21)
+)]
+pub fn is_excluded_1<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _arg0 = parameters.pop_reference()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.isExcluded(Ljava/lang/Class;)Z".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.isInstrumented(Ljava/lang/Class;)Z",
+    GreaterThanOrEqual(JAVA_21)
+)]
+pub fn is_instrumented<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _arg0 = parameters.pop_reference()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.isInstrumented(Ljava/lang/Class;)Z".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method("jdk/jfr/internal/JVM.isRecording()Z", GreaterThan(JAVA_11))]
+pub fn is_recording<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Err(JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.isRecording()Z".to_string()).into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.log(IILjava/lang/String;)V",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn log<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _arg2 = parameters.pop_reference()?;
+    let _arg1 = parameters.pop_int()?;
+    let _arg0 = parameters.pop_int()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.log(IILjava/lang/String;)V".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.logEvent(I[Ljava/lang/String;Z)V",
+    GreaterThan(JAVA_11)
+)]
+pub fn log_event<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _arg2 = parameters.pop_bool()?;
+    let _arg1 = parameters.pop_reference()?;
+    let _arg0 = parameters.pop_int()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.logEvent(I[Ljava/lang/String;Z)V".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method("jdk/jfr/internal/JVM.markChunkFinal()V", GreaterThan(JAVA_11))]
+pub fn mark_chunk_final<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Err(
+        JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.markChunkFinal()V".to_string())
+            .into(),
+    )
+}
+
+#[intrinsic_method("jdk/jfr/internal/JVM.nanosNow()J", GreaterThanOrEqual(JAVA_25))]
+pub fn nanos_now<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Err(JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.nanosNow()J".to_string()).into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.newEventWriter()Ljdk/jfr/internal/EventWriter;",
+    Between(JAVA_11, JAVA_17)
+)]
+pub fn new_event_writer_0<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.newEventWriter()Ljdk/jfr/internal/EventWriter;".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.newEventWriter()Ljdk/jfr/internal/event/EventWriter;",
+    GreaterThanOrEqual(JAVA_21)
+)]
+pub fn new_event_writer_1<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.newEventWriter()Ljdk/jfr/internal/event/EventWriter;".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method("jdk/jfr/internal/JVM.registerNatives()V", GreaterThanOrEqual(JAVA_11))]
+pub fn register_natives<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Ok(None)
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.registerStackFilter([Ljava/lang/String;[Ljava/lang/String;)J",
+    GreaterThanOrEqual(JAVA_25)
+)]
+pub fn register_stack_filter<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _arg1 = parameters.pop_reference()?;
+    let _arg0 = parameters.pop_reference()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.registerStackFilter([Ljava/lang/String;[Ljava/lang/String;)J"
+            .to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.retransformClasses([Ljava/lang/Class;)V",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn retransform_classes<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _arg0 = parameters.pop_reference()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.retransformClasses([Ljava/lang/Class;)V".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.setCompressedIntegers(Z)V",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn set_compressed_integers<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _compressed = parameters.pop_bool()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.setCompressedIntegers(Z)V".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.setConfiguration(Ljava/lang/Class;Ljdk/jfr/internal/event/EventConfiguration;)Z",
+    GreaterThanOrEqual(JAVA_21)
+)]
+pub fn set_configuration<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _arg1 = parameters.pop_reference()?;
+    let _arg0 = parameters.pop_reference()?;
+    Err(JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.setConfiguration(Ljava/lang/Class;Ljdk/jfr/internal/event/EventConfiguration;)Z".to_string()).into())
+}
+
+#[intrinsic_method("jdk/jfr/internal/JVM.setCutoff(JJ)Z", GreaterThanOrEqual(JAVA_11))]
+pub fn set_cutoff<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _cutoff_ticks = parameters.pop_long()?;
+    let _event_type_id = parameters.pop_long()?;
+    Err(JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.setCutoff(JJ)Z".to_string()).into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.setDumpPath(Ljava/lang/String;)V",
+    GreaterThanOrEqual(JAVA_21)
+)]
+pub fn set_dump_path<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _arg0 = parameters.pop_reference()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.setDumpPath(Ljava/lang/String;)V".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method("jdk/jfr/internal/JVM.setEnabled(JZ)V", GreaterThanOrEqual(JAVA_11))]
+pub fn set_enabled<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _enabled = parameters.pop_bool()?;
+    let _event_type_id = parameters.pop_long()?;
+    Err(JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.setEnabled(JZ)V".to_string()).into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.setFileNotification(J)V",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn set_file_notification<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _delta = parameters.pop_long()?;
+    Err(
+        JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.setFileNotification(J)V".to_string())
+            .into(),
+    )
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.setForceInstrumentation(Z)V",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn set_force_instrumentation<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _force = parameters.pop_bool()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.setForceInstrumentation(Z)V".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.setGlobalBufferCount(J)V",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn set_global_buffer_count<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _count = parameters.pop_long()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.setGlobalBufferCount(J)V".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.setGlobalBufferSize(J)V",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn set_global_buffer_size<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _size = parameters.pop_long()?;
+    Err(
+        JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.setGlobalBufferSize(J)V".to_string())
+            .into(),
+    )
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.setHandler(Ljava/lang/Class;Ljdk/jfr/internal/handlers/EventHandler;)Z",
+    Equal(JAVA_17)
+)]
+pub fn set_handler<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _arg1 = parameters.pop_reference()?;
+    let _arg0 = parameters.pop_reference()?;
+    Err(JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.setHandler(Ljava/lang/Class;Ljdk/jfr/internal/handlers/EventHandler;)Z".to_string()).into())
+}
+
+#[intrinsic_method("jdk/jfr/internal/JVM.setMemorySize(J)V", GreaterThanOrEqual(JAVA_11))]
+pub fn set_memory_size<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _size = parameters.pop_long()?;
+    Err(
+        JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.setMemorySize(J)V".to_string())
+            .into(),
+    )
+}
+
+#[intrinsic_method("jdk/jfr/internal/JVM.setMethodSamplingInterval(JJ)V", Equal(JAVA_11))]
+pub fn set_method_sampling_interval<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _interval_millis = parameters.pop_long()?;
+    let _type_ = parameters.pop_long()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.setMethodSamplingInterval(JJ)V".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.setMethodSamplingPeriod(JJ)V",
+    GreaterThanOrEqual(JAVA_17)
+)]
+pub fn set_method_sampling_period<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _period_millis = parameters.pop_long()?;
+    let _type_ = parameters.pop_long()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.setMethodSamplingPeriod(JJ)V".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.setMiscellaneous(JJ)V",
+    GreaterThanOrEqual(JAVA_25)
+)]
+pub fn set_miscellaneous<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _value = parameters.pop_long()?;
+    let _event_type_id = parameters.pop_long()?;
+    Err(
+        JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.setMiscellaneous(JJ)V".to_string())
+            .into(),
+    )
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.setOutput(Ljava/lang/String;)V",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn set_output<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _arg0 = parameters.pop_reference()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.setOutput(Ljava/lang/String;)V".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.setRepositoryLocation(Ljava/lang/String;)V",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn set_repository_location<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _arg0 = parameters.pop_reference()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.setRepositoryLocation(Ljava/lang/String;)V".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method("jdk/jfr/internal/JVM.setSampleThreads(Z)V", Between(JAVA_11, JAVA_17))]
+pub fn set_sample_threads<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _sample_threads = parameters.pop_bool()?;
+    Err(
+        JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.setSampleThreads(Z)V".to_string())
+            .into(),
+    )
+}
+
+#[intrinsic_method("jdk/jfr/internal/JVM.setStackDepth(I)V", GreaterThanOrEqual(JAVA_11))]
+pub fn set_stack_depth<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _depth = parameters.pop_int()?;
+    Err(
+        JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.setStackDepth(I)V".to_string())
+            .into(),
+    )
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.setStackTraceEnabled(JZ)V",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn set_stack_trace_enabled<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _enabled = parameters.pop_bool()?;
+    let _event_type_id = parameters.pop_long()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.setStackTraceEnabled(JZ)V".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.setThreadBufferSize(J)V",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn set_thread_buffer_size<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _size = parameters.pop_long()?;
+    Err(
+        JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.setThreadBufferSize(J)V".to_string())
+            .into(),
+    )
+}
+
+#[intrinsic_method("jdk/jfr/internal/JVM.setThreshold(JJ)Z", GreaterThanOrEqual(JAVA_11))]
+pub fn set_threshold<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _ticks = parameters.pop_long()?;
+    let _event_type_id = parameters.pop_long()?;
+    Err(
+        JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.setThreshold(JJ)Z".to_string())
+            .into(),
+    )
+}
+
+#[intrinsic_method("jdk/jfr/internal/JVM.setThrottle(JJJ)Z", GreaterThan(JAVA_11))]
+pub fn set_throttle<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _period_ms = parameters.pop_long()?;
+    let _event_sample_size = parameters.pop_long()?;
+    let _event_type_id = parameters.pop_long()?;
+    Err(
+        JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.setThrottle(JJJ)Z".to_string())
+            .into(),
+    )
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.shouldRotateDisk()Z",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn should_rotate_disk<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Err(
+        JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.shouldRotateDisk()Z".to_string())
+            .into(),
+    )
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.storeMetadataDescriptor([B)V",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn store_metadata_descriptor<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _bytes = parameters.pop_reference()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.storeMetadataDescriptor([B)V".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.subscribeLogLevel(Ljdk/jfr/internal/LogTag;I)V",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn subscribe_log_level<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _tag_set_id = parameters.pop_int()?;
+    let _lt = parameters.pop_reference()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.subscribeLogLevel(Ljdk/jfr/internal/LogTag;I)V".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.uncaughtException(Ljava/lang/Thread;Ljava/lang/Throwable;)V",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn uncaught_exception<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _arg1 = parameters.pop_reference()?;
+    let _arg0 = parameters.pop_reference()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.uncaughtException(Ljava/lang/Thread;Ljava/lang/Throwable;)V"
+            .to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.unregisterStackFilter(J)V",
+    GreaterThanOrEqual(JAVA_25)
+)]
+pub fn unregister_stack_filter<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _stack_filter_id = parameters.pop_long()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.unregisterStackFilter(J)V".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.drainStaleMethodTracerIds()[J",
+    GreaterThanOrEqual(JAVA_25)
+)]
+pub fn drain_stale_method_tracer_ids<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.jfr.internal.JVM.drainStaleMethodTracerIds()[J".to_string(),
+    )
+    .into())
+}
+
+#[intrinsic_method("jdk/jfr/internal/JVM.isProduct()Z", GreaterThanOrEqual(JAVA_25))]
+pub fn is_product<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Err(JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.isProduct()Z".to_string()).into())
+}
+
+#[intrinsic_method("jdk/jfr/internal/JVM.setCPUPeriod(J)V", GreaterThanOrEqual(JAVA_25))]
+pub fn set_cpu_period<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _period_nanos = parameters.pop_long()?;
+    Err(JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.setCPUPeriod(J)V".to_string()).into())
+}
+
+#[intrinsic_method("jdk/jfr/internal/JVM.setCPURate(D)V", GreaterThanOrEqual(JAVA_25))]
+pub fn set_cpu_rate<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _rate = parameters.pop_double()?;
+    Err(JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.setCPURate(D)V".to_string()).into())
+}
+
+#[intrinsic_method(
+    "jdk/jfr/internal/JVM.setMethodTraceFilters([Ljava/lang/String;[Ljava/lang/String;[Ljava/lang/String;[I)[J",
+    GreaterThanOrEqual(JAVA_25)
+)]
+pub fn set_method_trace_filters<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _arg3 = parameters.pop_reference()?;
+    let _arg2 = parameters.pop_reference()?;
+    let _arg1 = parameters.pop_reference()?;
+    let _arg0 = parameters.pop_reference()?;
+    Err(JavaError::UnsatisfiedLinkError("jdk.jfr.internal.JVM.setMethodTraceFilters([Ljava/lang/String;[Ljava/lang/String;[Ljava/lang/String;[I)[J".to_string()).into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_abort() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = abort(thread, Parameters::new(vec![Value::Object(None)]));
+        assert_eq!(
+            "jdk.jfr.internal.JVM.abort(Ljava/lang/String;)V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_add_string_constant() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = add_string_constant(
+            thread,
+            Parameters::new(vec![Value::Long(0), Value::Object(None)]),
+        );
+        assert_eq!(
+            "jdk.jfr.internal.JVM.addStringConstant(JLjava/lang/String;)Z",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_begin_recording() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = begin_recording(thread, Parameters::default());
+        assert_eq!(
+            "jdk.jfr.internal.JVM.beginRecording()V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_commit() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = commit(thread, Parameters::new(vec![Value::Long(0)]));
+        assert_eq!(
+            "jdk.jfr.internal.JVM.commit(J)J",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_counter_time() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = counter_time(thread, Parameters::default());
+        assert_eq!(
+            "jdk.jfr.internal.JVM.counterTime()J",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_create_jfr() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = create_jfr(thread, Parameters::new(vec![Value::from(false)]));
+        assert_eq!(
+            "jdk.jfr.internal.JVM.createJFR(Z)Z",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_destroy_jfr() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = destroy_jfr(thread, Parameters::default());
+        assert_eq!(
+            "jdk.jfr.internal.JVM.destroyJFR()Z",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_emit_data_loss() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = emit_data_loss(thread, Parameters::new(vec![Value::Long(0)]));
+        assert_eq!(
+            "jdk.jfr.internal.JVM.emitDataLoss(J)V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_emit_event() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = emit_event(
+            thread,
+            Parameters::new(vec![Value::Long(0), Value::Long(0), Value::Long(0)]),
+        );
+        assert_eq!(
+            "jdk.jfr.internal.JVM.emitEvent(JJJ)Z",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_emit_old_object_samples_0() {
+        let (_vm, thread) = crate::test::java11_thread().await.expect("thread");
+        let result = emit_old_object_samples_0(
+            thread,
+            Parameters::new(vec![Value::Long(0), Value::from(false)]),
+        );
+        assert_eq!(
+            "jdk.jfr.internal.JVM.emitOldObjectSamples(JZ)V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_emit_old_object_samples_1() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = emit_old_object_samples_1(
+            thread,
+            Parameters::new(vec![Value::Long(0), Value::from(false), Value::from(false)]),
+        );
+        assert_eq!(
+            "jdk.jfr.internal.JVM.emitOldObjectSamples(JZZ)V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_end_recording() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = end_recording(thread, Parameters::default());
+        assert_eq!(
+            "jdk.jfr.internal.JVM.endRecording()V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_exclude() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = exclude(thread, Parameters::new(vec![Value::Object(None)]));
+        assert_eq!(
+            "jdk.jfr.internal.JVM.exclude(Ljava/lang/Thread;)V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_flush_0() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = flush_0(thread, Parameters::default());
+        assert_eq!(
+            "jdk.jfr.internal.JVM.flush()V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_flush_1() {
+        let (_vm, thread) = crate::test::java17_thread().await.expect("thread");
+        let result = flush_1(
+            thread,
+            Parameters::new(vec![Value::Object(None), Value::Int(0), Value::Int(0)]),
+        );
+        assert_eq!(
+            "jdk.jfr.internal.JVM.flush(Ljdk/jfr/internal/EventWriter;II)Z",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_flush_2() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = flush_2(
+            thread,
+            Parameters::new(vec![Value::Object(None), Value::Int(0), Value::Int(0)]),
+        );
+        assert_eq!(
+            "jdk.jfr.internal.JVM.flush(Ljdk/jfr/internal/event/EventWriter;II)V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_all_event_classes() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = get_all_event_classes(thread, Parameters::default());
+        assert_eq!(
+            "jdk.jfr.internal.JVM.getAllEventClasses()Ljava/util/List;",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_allowed_to_do_event_retransforms() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = get_allowed_to_do_event_retransforms(thread, Parameters::default());
+        assert_eq!(
+            "jdk.jfr.internal.JVM.getAllowedToDoEventRetransforms()Z",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_chunk_start_nanos() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = get_chunk_start_nanos(thread, Parameters::default());
+        assert_eq!(
+            "jdk.jfr.internal.JVM.getChunkStartNanos()J",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_class_id() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = get_class_id(thread, Parameters::new(vec![Value::Object(None)]));
+        assert_eq!(
+            "jdk.jfr.internal.JVM.getClassId(Ljava/lang/Class;)J",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_class_id_non_intrinsic() {
+        let (_vm, thread) = crate::test::java11_thread().await.expect("thread");
+        let result = get_class_id_non_intrinsic(thread, Parameters::new(vec![Value::Object(None)]));
+        assert_eq!(
+            "jdk.jfr.internal.JVM.getClassIdNonIntrinsic(Ljava/lang/Class;)J",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_configuration() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = get_configuration(thread, Parameters::new(vec![Value::Object(None)]));
+        assert_eq!(
+            "jdk.jfr.internal.JVM.getConfiguration(Ljava/lang/Class;)Ljava/lang/Object;",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_dump_path() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = get_dump_path(thread, Parameters::default());
+        assert_eq!(
+            "jdk.jfr.internal.JVM.getDumpPath()Ljava/lang/String;",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_event_writer_0() {
+        let (_vm, thread) = crate::test::java17_thread().await.expect("thread");
+        let result = get_event_writer_0(thread, Parameters::default());
+        assert_eq!(
+            "jdk.jfr.internal.JVM.getEventWriter()Ljava/lang/Object;",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_event_writer_1() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = get_event_writer_1(thread, Parameters::default());
+        assert_eq!(
+            "jdk.jfr.internal.JVM.getEventWriter()Ljdk/jfr/internal/event/EventWriter;",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_handler() {
+        let (_vm, thread) = crate::test::java17_thread().await.expect("thread");
+        let result = get_handler(thread, Parameters::new(vec![Value::Object(None)]));
+        assert_eq!(
+            "jdk.jfr.internal.JVM.getHandler(Ljava/lang/Class;)Ljava/lang/Object;",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_pid() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = get_pid(thread, Parameters::default());
+        assert_eq!(
+            "jdk.jfr.internal.JVM.getPid()Ljava/lang/String;",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_stack_trace_id_0() {
+        let (_vm, thread) = crate::test::java21_thread().await.expect("thread");
+        let result = get_stack_trace_id_0(thread, Parameters::new(vec![Value::Int(0)]));
+        assert_eq!(
+            "jdk.jfr.internal.JVM.getStackTraceId(I)J",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_stack_trace_id_1() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result =
+            get_stack_trace_id_1(thread, Parameters::new(vec![Value::Int(0), Value::Long(0)]));
+        assert_eq!(
+            "jdk.jfr.internal.JVM.getStackTraceId(IJ)J",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_thread_id() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = get_thread_id(thread, Parameters::new(vec![Value::Object(None)]));
+        assert_eq!(
+            "jdk.jfr.internal.JVM.getThreadId(Ljava/lang/Thread;)J",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_ticks_frequency() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = get_ticks_frequency(thread, Parameters::default());
+        assert_eq!(
+            "jdk.jfr.internal.JVM.getTicksFrequency()J",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_time_conversion_factor() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = get_time_conversion_factor(thread, Parameters::default());
+        assert_eq!(
+            "jdk.jfr.internal.JVM.getTimeConversionFactor()D",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_type_id_0() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = get_type_id_0(thread, Parameters::new(vec![Value::Object(None)]));
+        assert_eq!(
+            "jdk.jfr.internal.JVM.getTypeId(Ljava/lang/String;)J",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_type_id_1() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = get_type_id_1(thread, Parameters::new(vec![Value::Object(None)]));
+        assert_eq!(
+            "jdk.jfr.internal.JVM.getTypeId(Ljava/lang/Class;)J",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_unloaded_event_class_count() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = get_unloaded_event_class_count(thread, Parameters::default());
+        assert_eq!(
+            "jdk.jfr.internal.JVM.getUnloadedEventClassCount()J",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_host_total_memory() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = host_total_memory(thread, Parameters::default());
+        assert_eq!(
+            "jdk.jfr.internal.JVM.hostTotalMemory()J",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_host_total_swap_memory() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = host_total_swap_memory(thread, Parameters::default());
+        assert_eq!(
+            "jdk.jfr.internal.JVM.hostTotalSwapMemory()J",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_include() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = include(thread, Parameters::new(vec![Value::Object(None)]));
+        assert_eq!(
+            "jdk.jfr.internal.JVM.include(Ljava/lang/Thread;)V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_is_available() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = is_available(thread, Parameters::default());
+        assert_eq!(
+            "jdk.jfr.internal.JVM.isAvailable()Z",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_is_containerized() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = is_containerized(thread, Parameters::default());
+        assert_eq!(
+            "jdk.jfr.internal.JVM.isContainerized()Z",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_is_excluded_0() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = is_excluded_0(thread, Parameters::new(vec![Value::Object(None)]));
+        assert_eq!(
+            "jdk.jfr.internal.JVM.isExcluded(Ljava/lang/Thread;)Z",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_is_excluded_1() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = is_excluded_1(thread, Parameters::new(vec![Value::Object(None)]));
+        assert_eq!(
+            "jdk.jfr.internal.JVM.isExcluded(Ljava/lang/Class;)Z",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_is_instrumented() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = is_instrumented(thread, Parameters::new(vec![Value::Object(None)]));
+        assert_eq!(
+            "jdk.jfr.internal.JVM.isInstrumented(Ljava/lang/Class;)Z",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_is_recording() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = is_recording(thread, Parameters::default());
+        assert_eq!(
+            "jdk.jfr.internal.JVM.isRecording()Z",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_log() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = log(
+            thread,
+            Parameters::new(vec![Value::Int(0), Value::Int(0), Value::Object(None)]),
+        );
+        assert_eq!(
+            "jdk.jfr.internal.JVM.log(IILjava/lang/String;)V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_log_event() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = log_event(
+            thread,
+            Parameters::new(vec![Value::Int(0), Value::Object(None), Value::from(false)]),
+        );
+        assert_eq!(
+            "jdk.jfr.internal.JVM.logEvent(I[Ljava/lang/String;Z)V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_mark_chunk_final() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = mark_chunk_final(thread, Parameters::default());
+        assert_eq!(
+            "jdk.jfr.internal.JVM.markChunkFinal()V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_nanos_now() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = nanos_now(thread, Parameters::default());
+        assert_eq!(
+            "jdk.jfr.internal.JVM.nanosNow()J",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_new_event_writer_0() {
+        let (_vm, thread) = crate::test::java17_thread().await.expect("thread");
+        let result = new_event_writer_0(thread, Parameters::default());
+        assert_eq!(
+            "jdk.jfr.internal.JVM.newEventWriter()Ljdk/jfr/internal/EventWriter;",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_new_event_writer_1() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = new_event_writer_1(thread, Parameters::default());
+        assert_eq!(
+            "jdk.jfr.internal.JVM.newEventWriter()Ljdk/jfr/internal/event/EventWriter;",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_register_natives() -> Result<()> {
+        let (_vm, thread) = crate::test::thread().await?;
+        let result = register_natives(thread, Parameters::default())?;
+        assert_eq!(result, None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_register_stack_filter() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = register_stack_filter(
+            thread,
+            Parameters::new(vec![Value::Object(None), Value::Object(None)]),
+        );
+        assert_eq!(
+            "jdk.jfr.internal.JVM.registerStackFilter([Ljava/lang/String;[Ljava/lang/String;)J",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_retransform_classes() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = retransform_classes(thread, Parameters::new(vec![Value::Object(None)]));
+        assert_eq!(
+            "jdk.jfr.internal.JVM.retransformClasses([Ljava/lang/Class;)V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_set_compressed_integers() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = set_compressed_integers(thread, Parameters::new(vec![Value::from(false)]));
+        assert_eq!(
+            "jdk.jfr.internal.JVM.setCompressedIntegers(Z)V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_set_configuration() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = set_configuration(
+            thread,
+            Parameters::new(vec![Value::Object(None), Value::Object(None)]),
+        );
+        assert_eq!(
+            "jdk.jfr.internal.JVM.setConfiguration(Ljava/lang/Class;Ljdk/jfr/internal/event/EventConfiguration;)Z",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_set_cutoff() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = set_cutoff(
+            thread,
+            Parameters::new(vec![Value::Long(0), Value::Long(0)]),
+        );
+        assert_eq!(
+            "jdk.jfr.internal.JVM.setCutoff(JJ)Z",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_set_dump_path() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = set_dump_path(thread, Parameters::new(vec![Value::Object(None)]));
+        assert_eq!(
+            "jdk.jfr.internal.JVM.setDumpPath(Ljava/lang/String;)V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_set_enabled() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = set_enabled(
+            thread,
+            Parameters::new(vec![Value::Long(0), Value::from(false)]),
+        );
+        assert_eq!(
+            "jdk.jfr.internal.JVM.setEnabled(JZ)V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_set_file_notification() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = set_file_notification(thread, Parameters::new(vec![Value::Long(0)]));
+        assert_eq!(
+            "jdk.jfr.internal.JVM.setFileNotification(J)V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_set_force_instrumentation() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = set_force_instrumentation(thread, Parameters::new(vec![Value::from(false)]));
+        assert_eq!(
+            "jdk.jfr.internal.JVM.setForceInstrumentation(Z)V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_set_global_buffer_count() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = set_global_buffer_count(thread, Parameters::new(vec![Value::Long(0)]));
+        assert_eq!(
+            "jdk.jfr.internal.JVM.setGlobalBufferCount(J)V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_set_global_buffer_size() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = set_global_buffer_size(thread, Parameters::new(vec![Value::Long(0)]));
+        assert_eq!(
+            "jdk.jfr.internal.JVM.setGlobalBufferSize(J)V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_set_handler() {
+        let (_vm, thread) = crate::test::java17_thread().await.expect("thread");
+        let result = set_handler(
+            thread,
+            Parameters::new(vec![Value::Object(None), Value::Object(None)]),
+        );
+        assert_eq!(
+            "jdk.jfr.internal.JVM.setHandler(Ljava/lang/Class;Ljdk/jfr/internal/handlers/EventHandler;)Z",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_set_memory_size() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = set_memory_size(thread, Parameters::new(vec![Value::Long(0)]));
+        assert_eq!(
+            "jdk.jfr.internal.JVM.setMemorySize(J)V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_set_method_sampling_interval() {
+        let (_vm, thread) = crate::test::java11_thread().await.expect("thread");
+        let result = set_method_sampling_interval(
+            thread,
+            Parameters::new(vec![Value::Long(0), Value::Long(0)]),
+        );
+        assert_eq!(
+            "jdk.jfr.internal.JVM.setMethodSamplingInterval(JJ)V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_set_method_sampling_period() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = set_method_sampling_period(
+            thread,
+            Parameters::new(vec![Value::Long(0), Value::Long(0)]),
+        );
+        assert_eq!(
+            "jdk.jfr.internal.JVM.setMethodSamplingPeriod(JJ)V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_set_miscellaneous() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = set_miscellaneous(
+            thread,
+            Parameters::new(vec![Value::Long(0), Value::Long(0)]),
+        );
+        assert_eq!(
+            "jdk.jfr.internal.JVM.setMiscellaneous(JJ)V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_set_output() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = set_output(thread, Parameters::new(vec![Value::Object(None)]));
+        assert_eq!(
+            "jdk.jfr.internal.JVM.setOutput(Ljava/lang/String;)V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_set_repository_location() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = set_repository_location(thread, Parameters::new(vec![Value::Object(None)]));
+        assert_eq!(
+            "jdk.jfr.internal.JVM.setRepositoryLocation(Ljava/lang/String;)V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_set_sample_threads() {
+        let (_vm, thread) = crate::test::java17_thread().await.expect("thread");
+        let result = set_sample_threads(thread, Parameters::new(vec![Value::from(false)]));
+        assert_eq!(
+            "jdk.jfr.internal.JVM.setSampleThreads(Z)V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_set_stack_depth() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = set_stack_depth(thread, Parameters::new(vec![Value::Int(0)]));
+        assert_eq!(
+            "jdk.jfr.internal.JVM.setStackDepth(I)V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_set_stack_trace_enabled() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = set_stack_trace_enabled(
+            thread,
+            Parameters::new(vec![Value::Long(0), Value::from(false)]),
+        );
+        assert_eq!(
+            "jdk.jfr.internal.JVM.setStackTraceEnabled(JZ)V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_set_thread_buffer_size() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = set_thread_buffer_size(thread, Parameters::new(vec![Value::Long(0)]));
+        assert_eq!(
+            "jdk.jfr.internal.JVM.setThreadBufferSize(J)V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_set_threshold() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = set_threshold(
+            thread,
+            Parameters::new(vec![Value::Long(0), Value::Long(0)]),
+        );
+        assert_eq!(
+            "jdk.jfr.internal.JVM.setThreshold(JJ)Z",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_set_throttle() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = set_throttle(
+            thread,
+            Parameters::new(vec![Value::Long(0), Value::Long(0), Value::Long(0)]),
+        );
+        assert_eq!(
+            "jdk.jfr.internal.JVM.setThrottle(JJJ)Z",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_should_rotate_disk() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = should_rotate_disk(thread, Parameters::default());
+        assert_eq!(
+            "jdk.jfr.internal.JVM.shouldRotateDisk()Z",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_store_metadata_descriptor() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = store_metadata_descriptor(thread, Parameters::new(vec![Value::Object(None)]));
+        assert_eq!(
+            "jdk.jfr.internal.JVM.storeMetadataDescriptor([B)V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_subscribe_log_level() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = subscribe_log_level(
+            thread,
+            Parameters::new(vec![Value::Object(None), Value::Int(0)]),
+        );
+        assert_eq!(
+            "jdk.jfr.internal.JVM.subscribeLogLevel(Ljdk/jfr/internal/LogTag;I)V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_uncaught_exception() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = uncaught_exception(
+            thread,
+            Parameters::new(vec![Value::Object(None), Value::Object(None)]),
+        );
+        assert_eq!(
+            "jdk.jfr.internal.JVM.uncaughtException(Ljava/lang/Thread;Ljava/lang/Throwable;)V",
+            result.unwrap_err().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_unregister_stack_filter() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = unregister_stack_filter(thread, Parameters::new(vec![Value::Long(0)]));
+        assert_eq!(
+            "jdk.jfr.internal.JVM.unregisterStackFilter(J)V",
+            result.unwrap_err().to_string()
+        );
+    }
+}

@@ -1,0 +1,74 @@
+use crate::bounds;
+use crate::java::lang::classloader::defining_class_loader;
+use ristretto_classfile::ClassFile;
+use ristretto_classfile::JAVA_8;
+use ristretto_classfile::VersionSpecification::LessThanOrEqual;
+use ristretto_classloader::{Class, Value};
+use ristretto_macros::intrinsic_method;
+use ristretto_types::JavaError::ClassFormatError;
+use ristretto_types::JavaObject;
+use ristretto_types::Thread;
+use ristretto_types::{Parameters, Result};
+use std::sync::Arc;
+use tracing::error;
+use zerocopy::transmute_ref;
+
+#[intrinsic_method(
+    "java/lang/reflect/Proxy.defineClass0(Ljava/lang/ClassLoader;Ljava/lang/String;[BII)Ljava/lang/Class;",
+    LessThanOrEqual(JAVA_8)
+)]
+pub async fn define_class_0<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let length = parameters.pop_int()?;
+    let offset = parameters.pop_int()?;
+    let bytes = parameters.pop()?;
+    let _name = parameters.pop()?;
+    let class_loader = parameters.pop()?;
+
+    let bytes = {
+        let bytes = bytes.as_byte_vec_ref()?;
+        let bytes: &[u8] = transmute_ref!(&*bytes);
+        bytes.to_vec()
+    };
+    let offset = usize::try_from(offset)?;
+    let length = usize::try_from(length)?;
+    let end = offset.checked_add(length).ok_or_else(|| {
+        ristretto_types::Error::InternalError("defineClass0 range overflow".into())
+    })?;
+    let class_bytes = bounds::range(&bytes, offset..end, "Proxy.defineClass0 bytes")?;
+
+    let class_file = match ClassFile::from_bytes(class_bytes) {
+        Ok(class_file) => class_file,
+        Err(error) => {
+            error!("ClassFormatError in Proxy.defineClass0: {error}");
+            return Err(ClassFormatError(error.to_string()).into());
+        }
+    };
+
+    let defining_loader = defining_class_loader(&thread, &class_loader).await?;
+    let class = Class::from(defining_loader, class_file)?;
+    thread.register_class(class.clone()).await?;
+    let class_object = class.to_object(&thread).await?;
+
+    if !class_loader.is_null() {
+        let mut object = class_object.as_object_mut()?;
+        object.set_value("classLoader", class_loader)?;
+    }
+
+    Ok(Some(class_object))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_define_class_0() {
+        let (_vm, thread) = crate::test::java8_thread().await.expect("thread");
+        // Test with empty parameters should return an error (not panic)
+        let result = define_class_0(thread, Parameters::default()).await;
+        assert!(result.is_err());
+    }
+}

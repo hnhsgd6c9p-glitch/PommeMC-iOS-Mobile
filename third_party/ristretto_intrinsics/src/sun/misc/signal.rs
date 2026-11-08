@@ -1,0 +1,63 @@
+use ristretto_classfile::JAVA_8;
+use ristretto_classfile::VersionSpecification::LessThanOrEqual;
+use ristretto_classloader::Value;
+use ristretto_macros::intrinsic_method;
+use ristretto_types::Thread;
+use ristretto_types::{Parameters, Result};
+use std::sync::Arc;
+
+#[intrinsic_method(
+    "sun/misc/Signal.findSignal(Ljava/lang/String;)I",
+    LessThanOrEqual(JAVA_8)
+)]
+pub fn find_signal<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Ok(Some(Value::Int(0)))
+}
+
+#[intrinsic_method("sun/misc/Signal.handle0(IJ)J", LessThanOrEqual(JAVA_8))]
+pub fn handle_0<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Ok(Some(Value::Long(0)))
+}
+
+#[intrinsic_method("sun/misc/Signal.raise0(I)V", LessThanOrEqual(JAVA_8))]
+pub fn raise_0<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_find_signal() -> Result<()> {
+        let (_vm, thread) = crate::test::java8_thread().await?;
+        let result = find_signal(thread, Parameters::default())?;
+        assert_eq!(result, Some(Value::Int(0)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_handle_0() -> Result<()> {
+        let (_vm, thread) = crate::test::java8_thread().await?;
+        let result = handle_0(thread, Parameters::default())?;
+        assert_eq!(result, Some(Value::Long(0)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_raise_0() -> Result<()> {
+        let (_vm, thread) = crate::test::java8_thread().await?;
+        let result = raise_0(thread, Parameters::default())?;
+        assert_eq!(result, None);
+        Ok(())
+    }
+}

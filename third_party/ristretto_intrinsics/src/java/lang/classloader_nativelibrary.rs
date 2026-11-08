@@ -1,0 +1,307 @@
+use ristretto_classfile::JAVA_8;
+use ristretto_classfile::JAVA_11;
+use ristretto_classfile::VersionSpecification::Equal;
+use ristretto_classloader::Value;
+use ristretto_macros::intrinsic_method;
+use ristretto_types::Thread;
+use ristretto_types::{Parameters, Result};
+use std::sync::Arc;
+
+#[intrinsic_method(
+    "java/lang/ClassLoader$NativeLibrary.find(Ljava/lang/String;)J",
+    Equal(JAVA_8)
+)]
+pub fn find<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let name = parameters.pop()?.as_string()?;
+    let native_library = parameters.pop()?;
+    let handle = native_library.as_object_ref()?.value("handle")?.as_i64()?;
+    let vm = thread.vm()?;
+    let address = crate::native_library::libraries(vm.as_ref())?
+        .find(handle, &name)
+        .unwrap_or_default();
+    Ok(Some(Value::Long(address)))
+}
+
+#[intrinsic_method(
+    "java/lang/ClassLoader$NativeLibrary.findEntry(Ljava/lang/String;)J",
+    Equal(JAVA_11)
+)]
+pub fn find_entry<T: Thread + 'static>(
+    thread: Arc<T>,
+    parameters: Parameters,
+) -> Result<Option<Value>> {
+    find(thread, parameters)
+}
+
+#[intrinsic_method(
+    "java/lang/ClassLoader$NativeLibrary.load(Ljava/lang/String;Z)V",
+    Equal(JAVA_8)
+)]
+pub fn load<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let is_builtin = parameters.pop_bool()?;
+    let name = parameters.pop()?.as_string()?;
+    let native_library_value = parameters.pop()?;
+    let intrinsic = is_builtin && crate::native_library::is_intrinsic_native_library(name.as_str());
+    let vm = thread.vm()?;
+    let (handle, jni_version) =
+        crate::native_library::libraries(vm.as_ref())?.load(&name, intrinsic)?;
+    let mut native_library = native_library_value.as_object_mut()?;
+    native_library.set_value("handle", Value::Long(handle))?;
+    native_library.set_value("jniVersion", Value::Int(i32::from(jni_version)))?;
+    native_library.set_value("loaded", Value::from(true))?;
+
+    Ok(None)
+}
+
+#[intrinsic_method(
+    "java/lang/ClassLoader$NativeLibrary.load0(Ljava/lang/String;ZZ)Z",
+    Equal(JAVA_11)
+)]
+pub fn load_0<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _is_jni = parameters.pop_bool()?;
+    let is_builtin = parameters.pop_bool()?;
+    let name = parameters.pop()?.as_string()?;
+    let native_library_value = parameters.pop()?;
+    let intrinsic = is_builtin && crate::native_library::is_intrinsic_native_library(name.as_str());
+    let vm = thread.vm()?;
+    let (handle, jni_version) =
+        crate::native_library::libraries(vm.as_ref())?.load(&name, intrinsic)?;
+    let mut native_library = native_library_value.as_object_mut()?;
+    native_library.set_value("handle", Value::Long(handle))?;
+    native_library.set_value("jniVersion", Value::Int(i32::from(jni_version)))?;
+    Ok(Some(Value::from(true)))
+}
+
+// Early Java 11 updates used a single boolean; later updates added an isJNI parameter.
+#[intrinsic_method(
+    "java/lang/ClassLoader$NativeLibrary.load0(Ljava/lang/String;Z)Z",
+    Equal(JAVA_11)
+)]
+pub fn load_0_early_java_11<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let is_builtin = parameters.pop_bool()?;
+    let name = parameters.pop()?.as_string()?;
+    let native_library_value = parameters.pop()?;
+    let intrinsic = is_builtin && crate::native_library::is_intrinsic_native_library(name.as_str());
+    let vm = thread.vm()?;
+    let (handle, jni_version) =
+        crate::native_library::libraries(vm.as_ref())?.load(&name, intrinsic)?;
+    let mut native_library = native_library_value.as_object_mut()?;
+    native_library.set_value("handle", Value::Long(handle))?;
+    native_library.set_value("jniVersion", Value::Int(i32::from(jni_version)))?;
+    Ok(Some(Value::from(true)))
+}
+
+#[intrinsic_method(
+    "java/lang/ClassLoader$NativeLibrary.unload(Ljava/lang/String;Z)V",
+    Equal(JAVA_8)
+)]
+pub fn unload_0<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _is_builtin = parameters.pop_bool()?;
+    let _name = parameters.pop()?.as_string()?;
+    let native_library = parameters.pop()?;
+    let handle = native_library.as_object_ref()?.value("handle")?.as_i64()?;
+    let vm = thread.vm()?;
+    crate::native_library::libraries(vm.as_ref())?.unload(handle);
+    Ok(None)
+}
+
+#[intrinsic_method(
+    "java/lang/ClassLoader$NativeLibrary.unload(Ljava/lang/String;ZJ)V",
+    Equal(JAVA_11)
+)]
+pub fn unload_1<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let handle = parameters.pop_long()?;
+    let _is_builtin = parameters.pop_bool()?;
+    let _name = parameters.pop()?.as_string()?;
+    let vm = thread.vm()?;
+    crate::native_library::libraries(vm.as_ref())?.unload(handle);
+    Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::native_library::JniVersion;
+    use ristretto_classfile::{BaseType, FieldType};
+    use ristretto_classloader::Reference;
+    use ristretto_types::JavaObject;
+
+    #[tokio::test]
+    async fn test_find() -> Result<()> {
+        let (vm, thread) = crate::test::java11_thread().await?;
+        let native_library_class = thread.class("java.lang.ClassLoader$NativeLibrary").await?;
+        let native_library = ristretto_classloader::Object::new(native_library_class)?;
+        let native_library =
+            Value::new_object(vm.garbage_collector(), Reference::Object(native_library));
+        let mut parameters = Parameters::default();
+        parameters.push(native_library);
+        parameters.push("missing".to_object(&thread).await?);
+        let result = find(thread, parameters)?;
+        assert_eq!(result, Some(Value::Long(0)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_find_entry() -> Result<()> {
+        let (vm, thread) = crate::test::java11_thread().await?;
+        let native_library_class = thread.class("java.lang.ClassLoader$NativeLibrary").await?;
+        let native_library = ristretto_classloader::Object::new(native_library_class)?;
+        let native_library =
+            Value::new_object(vm.garbage_collector(), Reference::Object(native_library));
+        let mut parameters = Parameters::default();
+        parameters.push(native_library);
+        parameters.push("missing".to_object(&thread).await?);
+        let result = find_entry(thread, parameters)?;
+        assert_eq!(result, Some(Value::Long(0)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_load() -> Result<()> {
+        let (vm, thread) = crate::test::java11_thread().await?;
+        let mut parameters = Parameters::default();
+
+        // Create a mock java.lang.ClassLoader$NativeLibrary class
+        let class_name = "java/lang/ClassLoader$NativeLibrary";
+        let mut constant_pool = ristretto_classfile::ConstantPool::default();
+        let this_class = constant_pool.add_class(class_name)?;
+        let handle_name_index = constant_pool.add_utf8("handle")?;
+        let handle_descriptor_index = constant_pool.add_utf8("J")?;
+        let jni_version_name_index = constant_pool.add_utf8("jniVersion")?;
+        let jni_version_descriptor_index = constant_pool.add_utf8("I")?;
+        let loaded_name_index = constant_pool.add_utf8("loaded")?;
+        let loaded_descriptor_index = constant_pool.add_utf8("Z")?;
+
+        let mut class_file = ristretto_classfile::ClassFile {
+            constant_pool,
+            this_class,
+            ..Default::default()
+        };
+
+        class_file.fields.push(ristretto_classfile::Field {
+            access_flags: ristretto_classfile::FieldAccessFlags::PUBLIC,
+            name_index: handle_name_index,
+            descriptor_index: handle_descriptor_index,
+            attributes: vec![],
+            field_type: FieldType::Base(BaseType::Long),
+        });
+        class_file.fields.push(ristretto_classfile::Field {
+            access_flags: ristretto_classfile::FieldAccessFlags::PUBLIC,
+            name_index: jni_version_name_index,
+            descriptor_index: jni_version_descriptor_index,
+            attributes: vec![],
+            field_type: FieldType::Base(BaseType::Int),
+        });
+        class_file.fields.push(ristretto_classfile::Field {
+            access_flags: ristretto_classfile::FieldAccessFlags::PUBLIC,
+            name_index: loaded_name_index,
+            descriptor_index: loaded_descriptor_index,
+            attributes: vec![],
+            field_type: FieldType::Base(BaseType::Boolean),
+        });
+        let class = ristretto_classloader::Class::from(None, class_file)?;
+        thread.register_class(class.clone()).await?;
+
+        let native_library_class = thread.class(class_name).await?;
+        let native_library_instance = ristretto_classloader::Object::new(native_library_class)?;
+        let native_library_value = Value::new_object(
+            vm.garbage_collector(),
+            Reference::Object(native_library_instance),
+        );
+        parameters.push(native_library_value);
+        parameters.push("sctp".to_object(&thread).await?); // name
+        parameters.push_bool(true); // is_builtin
+        let result = load(thread, parameters)?;
+        assert_eq!(result, None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_load_0() -> Result<()> {
+        let (vm, thread) = crate::test::java11_thread().await?;
+        let native_library_class = thread.class("java.lang.ClassLoader$NativeLibrary").await?;
+        let native_library = ristretto_classloader::Object::new(native_library_class)?;
+        let native_library =
+            Value::new_object(vm.garbage_collector(), Reference::Object(native_library));
+        let mut parameters = Parameters::default();
+        parameters.push(native_library.clone());
+        parameters.push("sctp".to_object(&thread).await?);
+        parameters.push_bool(true);
+        parameters.push_bool(true);
+        let result = load_0(thread, parameters)?;
+        assert_eq!(result, Some(Value::from(true)));
+        let native_library = native_library.as_object_ref()?;
+        assert_eq!(native_library.value("handle")?, Value::Long(1));
+        assert_eq!(
+            native_library.value("jniVersion")?,
+            Value::Int(i32::from(JniVersion::V1_6))
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_load_0_early_java_11() -> Result<()> {
+        let (vm, thread) = crate::test::java11_thread().await?;
+        let native_library_class = thread.class("java.lang.ClassLoader$NativeLibrary").await?;
+        let native_library = ristretto_classloader::Object::new(native_library_class)?;
+        let native_library =
+            Value::new_object(vm.garbage_collector(), Reference::Object(native_library));
+        let mut parameters = Parameters::default();
+        parameters.push(native_library.clone());
+        parameters.push("sctp".to_object(&thread).await?);
+        parameters.push_bool(true);
+        let result = load_0_early_java_11(thread, parameters)?;
+        assert_eq!(result, Some(Value::from(true)));
+        let native_library = native_library.as_object_ref()?;
+        assert_eq!(native_library.value("handle")?, Value::Long(1));
+        assert_eq!(
+            native_library.value("jniVersion")?,
+            Value::Int(i32::from(JniVersion::V1_6))
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_unload_0() -> Result<()> {
+        let (vm, thread) = crate::test::java11_thread().await?;
+        let native_library_class = thread.class("java.lang.ClassLoader$NativeLibrary").await?;
+        let native_library = ristretto_classloader::Object::new(native_library_class)?;
+        let native_library =
+            Value::new_object(vm.garbage_collector(), Reference::Object(native_library));
+        let mut parameters = Parameters::default();
+        parameters.push(native_library);
+        parameters.push("sctp".to_object(&thread).await?);
+        parameters.push_bool(true);
+        let result = unload_0(thread, parameters)?;
+        assert_eq!(result, None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_unload_1() -> Result<()> {
+        let (_vm, thread) = crate::test::java11_thread().await?;
+        let name = "sctp".to_object(&thread).await?;
+        let parameters = Parameters::new(vec![name, Value::Int(1), Value::Long(0)]);
+        let result = unload_1(thread, parameters)?;
+        assert_eq!(result, None);
+        Ok(())
+    }
+}
