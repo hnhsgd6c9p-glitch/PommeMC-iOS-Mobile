@@ -161,6 +161,20 @@ public final class MinecraftApiStubGenerator {
               );
               mv.visitInsn(Opcodes.POP);
               mv.visitInsn(Opcodes.RETURN);
+            } else if (meta.name.equals("net/minecraft/class_1309")
+                && name.equals("method_5670")
+                && desc.equals("()V")) {
+              // Preserve Lithium's MixinExtras WrapWithCondition target in LivingEntity.baseTick.
+              mv.visitInsn(Opcodes.ACONST_NULL);
+              mv.visitVarInsn(Opcodes.ALOAD,0);
+              mv.visitMethodInsn(
+                  Opcodes.INVOKESTATIC,
+                  "net/minecraft/class_1890",
+                  "method_60154",
+                  "(Lnet/minecraft/class_3218;Lnet/minecraft/class_1309;)V",
+                  false
+              );
+              mv.visitInsn(Opcodes.RETURN);
             } else {
               Type ret=Type.getReturnType(desc);
               switch(ret.getSort()) {
