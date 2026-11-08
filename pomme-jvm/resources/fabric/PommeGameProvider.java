@@ -97,9 +97,27 @@ public final class PommeGameProvider implements GameProvider {
     @Override public String getRuntimeNamespace(String defaultNamespace) { return "intermediary"; }
     @Override public String getDefaultModDistributionNamespace(String defaultNamespace) { return "intermediary"; }
 
+    private static void traceResource(ClassLoader loader, String name) {
+        try (var stream = loader.getResourceAsStream(name)) {
+            if (stream == null) {
+                System.err.println("[POMME_RESOURCE] " + name + " missing");
+                return;
+            }
+            byte[] bytes = stream.readAllBytes();
+            String preview = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+            System.err.println("[POMME_RESOURCE] " + name + " bytes=" + bytes.length
+                + " refmapField=" + preview.contains("\\\"refmap\\\""));
+        } catch (Exception error) {
+            System.err.println("[POMME_RESOURCE] " + name + " read failed: " + error);
+        }
+    }
+
     @Override
     public void launch(ClassLoader loader) {
         try {
+            traceResource(loader, "lithium.mixins.json");
+            traceResource(loader, "lithium.refmap.json");
+            traceResource(loader, "lithium-fabric.mixins.json");
             System.err.println("[POMME_TRACE] GameProvider.launch: before loadIntoTarget");
             Class<?> entrypoint = fabricLauncher.loadIntoTarget(getEntrypoint());
             System.err.println("[POMME_TRACE] GameProvider.launch: entrypoint class loaded");
