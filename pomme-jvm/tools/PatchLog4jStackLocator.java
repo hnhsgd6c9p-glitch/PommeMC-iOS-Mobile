@@ -11,16 +11,17 @@ import java.util.jar.JarOutputStream;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
-import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
-import org.objectweb.asm.tree.LdcInsnNode;
+import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.MethodNode;
 
 /**
- * Makes Log4j 2.22's caller-class lookup safe on Java 21 interpreters that
- * do not expose the removed sun.reflect.Reflection VM hook.
+ * Keeps Log4j 2.22's caller-class fallback compatible with Java 21 interpreters
+ * that do not expose sun.reflect.Reflection. The fallback must return null:
+ * StackLocator walks callers until null, so Object.class would create an
+ * endless caller-search loop.
  */
 public final class PatchLog4jStackLocator {
     private static final String CLASS_ENTRY =
@@ -67,7 +68,7 @@ public final class PatchLog4jStackLocator {
                                         && field.desc.equals("Ljava/lang/Class;")) {
                                     method.instructions.set(
                                             instruction,
-                                            new LdcInsnNode(Type.getObjectType("java/lang/Object"))
+                                            new InsnNode(Opcodes.ACONST_NULL)
                                     );
                                     patchedReferences++;
                                 }
