@@ -77,6 +77,20 @@ public final class MinecraftApiStubGenerator {
               );
               mv.visitInsn(Opcodes.POP);
               mv.visitInsn(Opcodes.RETURN);
+            } else if (meta.name.equals("net/minecraft/class_1309")
+                && name.equals("method_30128")
+                && desc.equals("()V")) {
+              // Preserve the INVOKE target used by Lithium's equipment-change mixin.
+              mv.visitVarInsn(Opcodes.ALOAD,0);
+              mv.visitInsn(Opcodes.ACONST_NULL);
+              mv.visitMethodInsn(
+                  Opcodes.INVOKESPECIAL,
+                  "net/minecraft/class_1309",
+                  "method_30121",
+                  "(Ljava/util/Map;)V",
+                  false
+              );
+              mv.visitInsn(Opcodes.RETURN);
             } else {
               Type ret=Type.getReturnType(desc);
               switch(ret.getSort()) {
