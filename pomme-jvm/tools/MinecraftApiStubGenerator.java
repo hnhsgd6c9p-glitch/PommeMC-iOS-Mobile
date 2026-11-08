@@ -63,6 +63,20 @@ public final class MinecraftApiStubGenerator {
               for(Type arg:Type.getArgumentTypes(parentDesc)) pushDefault(mv,arg);
               mv.visitMethodInsn(Opcodes.INVOKESPECIAL,meta.parent,"<init>",parentDesc,false);
               mv.visitInsn(Opcodes.RETURN);
+            } else if (meta.name.equals("net/minecraft/class_1309")
+                && name.equals("method_6116")
+                && desc.equals("(Lnet/minecraft/class_1304;Lnet/minecraft/class_1799;Lnet/minecraft/class_1799;)V")) {
+              // Preserve the field-read shape used by Lithium's LivingEntityMixin injection.
+              // The real method body is deliberately not copied into Pomme's ABI bridge.
+              mv.visitVarInsn(Opcodes.ALOAD,0);
+              mv.visitFieldInsn(
+                  Opcodes.GETFIELD,
+                  "net/minecraft/class_1309",
+                  "field_5953",
+                  "Z"
+              );
+              mv.visitInsn(Opcodes.POP);
+              mv.visitInsn(Opcodes.RETURN);
             } else {
               Type ret=Type.getReturnType(desc);
               switch(ret.getSort()) {
