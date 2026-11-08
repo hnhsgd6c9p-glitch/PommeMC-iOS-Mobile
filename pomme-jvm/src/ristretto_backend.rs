@@ -5,10 +5,15 @@
 //! sideloaded iOS applications. The Java runtime image is supplied by Pomme;
 //! it is never downloaded at launch time.
 
+use std::collections::BTreeMap;
+use std::fs::File;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use ristretto_vm::{ClassPath, ClassPathEntry, ConfigurationBuilder, Memory, VM, Value};
+use zip::write::SimpleFileOptions;
+use zip::{ZipArchive, ZipWriter};
 use serde::Deserialize;
 use thiserror::Error;
 
@@ -384,6 +389,123 @@ pub fn bundled_fabric_runtime(minecraft_version: &str) -> Option<PathBuf> {
     }
 }
 
+/// Flatten a multi-release JAR to the class/resource view for the active Java
+/// version. Ristretto's upstream class-path reader currently reads only root
+/// entries, while Java 9+ must select the highest META-INF/versions/N entry
+/// when the manifest declares Multi-Release: true.
+fn flatten_multi_release_jars(
+    jars: &[PathBuf],
+    game_dir: &Path,
+    java_major: u8,
+) -> Result<Vec<PathBuf>, RistrettoBackendError> {
+    let staging_dir = game_dir.join(format!(".pomme-runtime-jars-java{java_major}"));
+    if staging_dir.exists() {
+        std::fs::remove_dir_all(&staging_dir)?;
+    }
+    std::fs::create_dir_all(&staging_dir)?;
+
+    let mut staged = Vec::with_capacity(jars.len());
+    let mut flattened_count = 0usize;
+    for (index, jar_path) in jars.iter().enumerate() {
+        let mut archive = ZipArchive::new(File::open(jar_path)?)?;
+        let mut manifest_text = String::new();
+        let is_multi_release = match archive.by_name("META-INF/MANIFEST.MF") {
+            Ok(mut manifest) => {
+                manifest.read_to_string(&mut manifest_text)?;
+                let mut unfolded = Vec::<String>::new();
+                for line in manifest_text.lines() {
+                    if line.starts_with(' ') {
+                        if let Some(previous) = unfolded.last_mut() {
+                            previous.push_str(&line[1..]);
+                        }
+                    } else {
+                        unfolded.push(line.to_owned());
+                    }
+                }
+                unfolded.iter().any(|line| {
+                    line.split_once(':').is_some_and(|(key, value)| {
+                        key.eq_ignore_ascii_case("Multi-Release")
+                            && value.trim().eq_ignore_ascii_case("true")
+                    })
+                })
+            }
+            Err(zip::result::ZipError::FileNotFound) => false,
+            Err(error) => return Err(error.into()),
+        };
+        if !is_multi_release {
+            staged.push(jar_path.clone());
+            continue;
+        }
+
+        let mut base_entries = BTreeMap::<String, Vec<u8>>::new();
+        let mut versioned_entries = BTreeMap::<String, (u8, Vec<u8>)>::new();
+        for entry_index in 0..archive.len() {
+            let mut entry = archive.by_index(entry_index)?;
+            if entry.is_dir() {
+                continue;
+            }
+            let name = entry.name().to_owned();
+            let mut bytes = Vec::with_capacity(usize::try_from(entry.size()).unwrap_or(0));
+            entry.read_to_end(&mut bytes)?;
+
+            if let Some(versioned) = name.strip_prefix("META-INF/versions/") {
+                let Some((version, logical_name)) = versioned.split_once('/') else {
+                    continue;
+                };
+                let Ok(version) = version.parse::<u8>() else {
+                    continue;
+                };
+                // JEP 238 never versions META-INF entries themselves.
+                if version < 9
+                    || version > java_major
+                    || logical_name.is_empty()
+                    || logical_name.starts_with("META-INF/")
+                {
+                    continue;
+                }
+                let replace = versioned_entries
+                    .get(logical_name)
+                    .is_none_or(|(current_version, _)| version > *current_version);
+                if replace {
+                    versioned_entries.insert(logical_name.to_owned(), (version, bytes));
+                }
+            } else {
+                base_entries.insert(name, bytes);
+            }
+        }
+
+        if versioned_entries.is_empty() {
+            staged.push(jar_path.clone());
+            continue;
+        }
+        for (name, (_, bytes)) in versioned_entries {
+            base_entries.insert(name, bytes);
+        }
+
+        let file_name = jar_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("runtime.jar");
+        let output_path = staging_dir.join(format!("{index:04}-{file_name}"));
+        let output_file = File::create(&output_path)?;
+        let mut writer = ZipWriter::new(output_file);
+        for (name, bytes) in base_entries {
+            writer.start_file(name, SimpleFileOptions::default())?;
+            writer.write_all(&bytes)?;
+        }
+        writer.finish()?;
+        staged.push(output_path);
+        flattened_count += 1;
+    }
+
+    if std::env::var_os("POMME_FABRIC_DEBUG").is_some() {
+        eprintln!(
+            "[POMME_MRJAR] flattened {flattened_count} multi-release JAR(s) for Java {java_major}"
+        );
+    }
+    Ok(staged)
+}
+
 /// Start the real Fabric Loader/Knot client bootstrap against Pomme's native
 /// game directory. Fabric Loader performs mod discovery, dependency solving,
 /// language-adapter resolution, Mixin bootstrap and entrypoint lifecycle.
@@ -448,8 +570,15 @@ pub async fn run_fabric_loader(
         ));
     }
 
-    let intermediary_jar = lib_dir.join(&manifest.intermediary_jar);
-    let class_path = ClassPath::from(&jars);
+    let original_intermediary_jar = lib_dir.join(&manifest.intermediary_jar);
+    let staged_jars = flatten_multi_release_jars(&jars, game_dir, manifest.java_major)?;
+    let intermediary_jar = staged_jars
+        .iter()
+        .zip(&jars)
+        .find(|(_, original)| *original == &original_intermediary_jar)
+        .map(|(staged, _)| staged.clone())
+        .unwrap_or(original_intermediary_jar);
+    let class_path = ClassPath::from(&staged_jars);
     let game_dir = game_dir.to_string_lossy();
     let mods_dir = mods_dir.to_string_lossy();
     let intermediary_jar = intermediary_jar.to_string_lossy();
