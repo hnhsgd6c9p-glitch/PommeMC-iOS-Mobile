@@ -381,8 +381,10 @@ pub async fn define_class_1_1<T: Thread + 'static>(
         let bytes: &[u8] = transmute_ref!(&*bytes);
         bytes.to_vec()
     };
-    let name = parameters.pop()?.as_string()?;
-    trace_fabric_class_load("defineClass1", &name);
+    let name = parameters.pop()?;
+    if let Ok(name) = name.as_string() {
+        trace_fabric_class_load("defineClass1", &name);
+    }
     let class_loader = parameters.pop()?;
     let defining_loader = defining_class_loader(&thread, &class_loader).await?;
     let class = class_object_from_bytes(
@@ -426,8 +428,10 @@ pub async fn define_class_2_1<T: Thread + 'static>(
     };
 
     let bytes: Vec<u8> = buffer.iter().copied().skip(buffer_offset).collect();
-    let name = parameters.pop()?.as_string()?;
-    trace_fabric_class_load("defineClass2", &name);
+    let name = parameters.pop()?;
+    if let Ok(name) = name.as_string() {
+        trace_fabric_class_load("defineClass2", &name);
+    }
     let class_loader = parameters.pop()?;
     let defining_loader = defining_class_loader(&thread, &class_loader).await?;
     let class = class_object_from_bytes(
