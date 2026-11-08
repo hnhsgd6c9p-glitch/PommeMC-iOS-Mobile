@@ -66,4 +66,5 @@ jobs:
           POMME_LITHIUM_JAR: /tmp/pomme-third-party-mods/lithium-fabric-0.15.4+mc1.21.1.jar
           # Emit Fabric's class-load and Mixin transformation diagnostics around Knot.loadIntoTarget().
           POMME_FABRIC_DEBUG: "1"
+          POMME_CLASSLOAD_TRACE: "1"
         run: cargo test -p pomme-jvm --test third_party_lithium -- --ignored --nocapture
