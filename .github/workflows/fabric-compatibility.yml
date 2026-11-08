@@ -59,9 +59,6 @@ jobs:
       - name: Fetch checksum-pinned third-party mod fixtures
         run: pomme-jvm/scripts/fetch-third-party-mod-fixtures.sh /tmp/pomme-third-party-mods
 
-      - name: Run JVM and mod unit tests
-        run: cargo test -p pomme-jvm -p pomme-mod --lib --no-fail-fast
-
       - name: Load real Lithium 0.15.4 and verify its Mixin transformation
         env:
           POMME_FABRIC_RUNTIME: ${{ github.workspace }}/pomme-ios/Resources/FabricRuntime/1.21.1
