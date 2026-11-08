@@ -105,6 +105,8 @@ public final class MinecraftApiStubGenerator {
                   false
               );
               mv.visitVarInsn(Opcodes.ISTORE,1);
+              // INVOKE_ASSIGN with Shift.AFTER needs one instruction after the assignment.
+              mv.visitInsn(Opcodes.NOP);
               mv.visitInsn(Opcodes.RETURN);
             } else {
               Type ret=Type.getReturnType(desc);
