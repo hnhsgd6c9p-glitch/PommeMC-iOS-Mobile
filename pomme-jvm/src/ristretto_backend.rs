@@ -596,3 +596,159 @@ pub async fn run_fabric_loader(
     .await?;
     Ok(FabricSession { vm })
 }
+
+#[cfg(test)]
+mod multi_release_jar_tests {
+    use super::*;
+    use std::io::Cursor;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn make_multi_release_jar(path: &Path) {
+        let mut writer = ZipWriter::new(File::create(path).expect("create test JAR"));
+        let options = SimpleFileOptions::default();
+        writer
+            .start_file("META-INF/MANIFEST.MF", options)
+            .expect("start manifest");
+        writer
+            .write_all(b"Manifest-Version: 1.0\r\nMulti-Release: true\r\n\r\n")
+            .expect("write manifest");
+        writer
+            .start_file("example/Version.class", options)
+            .expect("start base class");
+        writer.write_all(b"base").expect("write base class");
+        writer
+            .start_file("META-INF/versions/9/example/Version.class", options)
+            .expect("start Java 9 class");
+        writer.write_all(b"java9").expect("write Java 9 class");
+        writer
+            .start_file("META-INF/versions/21/example/Version.class", options)
+            .expect("start Java 21 class");
+        writer.write_all(b"java21").expect("write Java 21 class");
+        writer
+            .start_file("META-INF/versions/21/META-INF/services/example.Service", options)
+            .expect("start non-versionable META-INF resource");
+        writer.write_all(b"must-not-override").expect("write service");
+        writer.finish().expect("finish test JAR");
+    }
+
+    fn read_entry(path: &Path, name: &str) -> Vec<u8> {
+        let mut archive = ZipArchive::new(File::open(path).expect("open staged JAR"))
+            .expect("read staged JAR");
+        let mut entry = archive.by_name(name).expect("find staged entry");
+        let mut bytes = Vec::new();
+        entry.read_to_end(&mut bytes).expect("read staged entry");
+        bytes
+    }
+
+    #[test]
+    fn selects_highest_multi_release_entry_not_newer_than_runtime() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "pomme-mrjar-test-{}-{nonce}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).expect("create test directory");
+        let source = root.join("fixture.jar");
+        make_multi_release_jar(&source);
+
+        let staged = flatten_multi_release_jars(&[source], &root, 17)
+            .expect("flatten Java 17 class path");
+        assert_eq!(staged.len(), 1);
+        assert_eq!(
+            read_entry(&staged[0], "example/Version.class"),
+            b"java9"
+        );
+        assert!(
+            ZipArchive::new(File::open(&staged[0]).expect("open staged JAR"))
+                .expect("read staged JAR")
+                .by_name("META-INF/versions/9/example/Version.class")
+                .is_err(),
+            "versioned paths must not remain after flattening"
+        );
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn selects_java_21_entry_and_does_not_version_meta_inf_resources() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "pomme-mrjar-test-{}-{nonce}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).expect("create test directory");
+        let source = root.join("fixture.jar");
+        make_multi_release_jar(&source);
+
+        let staged = flatten_multi_release_jars(&[source], &root, 21)
+            .expect("flatten Java 21 class path");
+        assert_eq!(read_entry(&staged[0], "example/Version.class"), b"java21");
+        assert!(
+            ZipArchive::new(File::open(&staged[0]).expect("open staged JAR"))
+                .expect("read staged JAR")
+                .by_name("META-INF/services/example.Service")
+                .is_err(),
+            "META-INF entries under versions must not be promoted"
+        );
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn leaves_non_multi_release_jars_untouched() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "pomme-mrjar-test-{}-{nonce}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).expect("create test directory");
+        let source = root.join("plain.jar");
+        let mut writer = ZipWriter::new(File::create(&source).expect("create plain JAR"));
+        writer
+            .start_file("example/Plain.class", SimpleFileOptions::default())
+            .expect("start plain class");
+        writer.write_all(b"plain").expect("write plain class");
+        writer.finish().expect("finish plain JAR");
+
+        let staged = flatten_multi_release_jars(&[source.clone()], &root, 21)
+            .expect("process plain class path");
+        assert_eq!(staged, [source]);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn manifest_attribute_is_case_insensitive_and_unfolded() {
+        let manifest = b"Manifest-Version: 1.0\r\nMulti-Release: tr\r\n ue\r\n\r\n";
+        let text = String::from_utf8(manifest.to_vec()).expect("UTF-8 manifest");
+        let mut unfolded = Vec::<String>::new();
+        for line in text.lines() {
+            if line.starts_with(' ') {
+                if let Some(previous) = unfolded.last_mut() {
+                    previous.push_str(&line[1..]);
+                }
+            } else {
+                unfolded.push(line.to_owned());
+            }
+        }
+        assert!(unfolded.iter().any(|line| {
+            line.split_once(':').is_some_and(|(key, value)| {
+                key.eq_ignore_ascii_case("Multi-Release")
+                    && value.trim().eq_ignore_ascii_case("true")
+            })
+        }));
+    }
+
+    #[allow(dead_code)]
+    fn _cursor_type_check() {
+        let _ = Cursor::new(Vec::<u8>::new());
+    }
+}
