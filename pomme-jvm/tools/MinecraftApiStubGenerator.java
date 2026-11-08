@@ -220,6 +220,65 @@ public final class MinecraftApiStubGenerator {
               );
               mv.visitInsn(Opcodes.ARETURN);
               mv.visitLocalVariable("entityCollisions","Ljava/util/List;",null,collisionsStart,collisionsEnd,2);
+            } else if (meta.name.equals("net/minecraft/class_1297")
+                && name.equals("method_23327")
+                && desc.equals("(DDD)V")) {
+              // Preserve Lithium's SectionPos call in Entity.setPosRaw.
+              mv.visitInsn(Opcodes.ICONST_0);
+              mv.visitMethodInsn(
+                  Opcodes.INVOKESTATIC,
+                  "net/minecraft/class_4076",
+                  "method_18675",
+                  "(I)I",
+                  false
+              );
+              mv.visitInsn(Opcodes.POP);
+              mv.visitInsn(Opcodes.RETURN);
+            } else if (meta.name.equals("net/minecraft/class_1297")
+                && name.equals("method_5670")
+                && desc.equals("()V")) {
+              // Preserve Lithium's isPassenger injection in Entity.baseTick.
+              mv.visitVarInsn(Opcodes.ALOAD,0);
+              mv.visitMethodInsn(
+                  Opcodes.INVOKEVIRTUAL,
+                  "net/minecraft/class_1297",
+                  "method_5765",
+                  "()Z",
+                  false
+              );
+              mv.visitInsn(Opcodes.POP);
+              mv.visitInsn(Opcodes.RETURN);
+            } else if (meta.name.equals("net/minecraft/class_1297")
+                && name.equals("method_55667")
+                && desc.equals("()Lnet/minecraft/class_2680;")) {
+              // Preserve Lithium's post-getBlockState injection in getInBlockState.
+              mv.visitVarInsn(Opcodes.ALOAD,0);
+              mv.visitMethodInsn(
+                  Opcodes.INVOKEVIRTUAL,
+                  "net/minecraft/class_1297",
+                  "method_37908",
+                  "()Lnet/minecraft/class_1937;",
+                  false
+              );
+              mv.visitVarInsn(Opcodes.ALOAD,0);
+              mv.visitMethodInsn(
+                  Opcodes.INVOKEVIRTUAL,
+                  "net/minecraft/class_1297",
+                  "method_24515",
+                  "()Lnet/minecraft/class_2338;",
+                  false
+              );
+              mv.visitMethodInsn(
+                  Opcodes.INVOKEVIRTUAL,
+                  "net/minecraft/class_1937",
+                  "method_8320",
+                  "(Lnet/minecraft/class_2338;)Lnet/minecraft/class_2680;",
+                  false
+              );
+              mv.visitVarInsn(Opcodes.ASTORE,1);
+              mv.visitInsn(Opcodes.NOP);
+              mv.visitVarInsn(Opcodes.ALOAD,1);
+              mv.visitInsn(Opcodes.ARETURN);
             } else {
               Type ret=Type.getReturnType(desc);
               switch(ret.getSort()) {
