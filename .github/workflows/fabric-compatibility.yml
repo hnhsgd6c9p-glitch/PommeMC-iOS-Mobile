@@ -1,8 +1,9 @@
 name: Fabric compatibility
 
 on:
+  # Also run on the isolated diagnostic branch; the iOS IPA workflow remains
+  # restricted to ios-ipa-cloud-build.
   push:
-    branches: [ios-ipa-cloud-build]
   pull_request:
     branches: [ios-ipa-cloud-build]
   workflow_dispatch:
