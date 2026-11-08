@@ -43,7 +43,7 @@ Implemented so far:
 - Mixin configuration packaging and bootstrap; the probe verifies transformation-before-definition for its target class, while broad vanilla/Minecraft target coverage remains unverified.
 - Fabric Event registration and client start/end tick events.
 - An intermediary Minecraft client/player/entity surface (`class_310`, `class_746`, `class_1657`, `class_1309`, `class_1297`, `class_1702`) exposing player position, health, food, ground state, game directory and version through a per-tick Rust-to-Java state snapshot.
-- Generated Minecraft 1.21.1 intermediary ABI stubs for 8,269 Minecraft/Mojang classes, with matching fields, method descriptors, access flags and class hierarchy. The merged bridge currently contains 8,278 classes, including hand-written overrides.
+- Generated Minecraft 1.21.1 intermediary ABI stubs for 8,269 Minecraft/Mojang classes, with matching fields, method descriptors, access flags and class hierarchy. The merged bridge currently contains 8,279 classes, including hand-written overrides.
 - An ASM-based mod ABI audit tool; official Fabric API base/lifecycle fixtures report zero missing classes and members against the generated bridge.
 - Fabric Event ABI compatibility including client and world start/end tick events, plus intermediary `Identifier` support.
 - Persistent VM callback dispatch from the native fixed-step loop.
@@ -54,7 +54,7 @@ Not implemented yet:
 - The complete Fabric API module set (rendering, networking, key bindings, lifecycle, registry, resource, item, block, entity, screen and other APIs).
 - A complete native bridge from Java API calls to Pomme's Rust world, player, renderer, input, audio and resource systems.
 - Broad proof that Fabric Knot's transformer correctly applies every real mod's Mixin targets before Ristretto's Java `defineClass1/2` path. The synthetic MixinExtras probe passes; real third-party target coverage is still being expanded.
-- Full Fabric API extension coverage: the all-module audit currently finds 75 methods/fields expected to be injected by Fabric API Mixins. These should be supplied by the official Mixin pipeline rather than hard-coded into the vanilla ABI generator.
+- Full Fabric API extension coverage: the all-module audit currently finds 72 methods/fields expected to be injected by Fabric API Mixins. These should be supplied by the official Mixin pipeline rather than hard-coded into the vanilla ABI generator.
 - Broad Mixin target coverage against real Minecraft classes, including all injection points and compatibility edge cases.
 - Full access-widener behavior and remapping validation across all supported mod namespace variants.
 - Java 25 / Fabric Loader profile for Minecraft 26.x.
@@ -92,9 +92,9 @@ The scanner uses the bundled ASM 9.9 library to inspect class, field, method, de
 
 Initial 1.21.1 baseline:
 - The tiny example Fabric mod reports zero Minecraft ABI gaps.
-- The generated bridge contains 8,278 classes; Java 21 reflection successfully resolves their class hierarchies, fields, methods and constructors with zero failures.
+- The generated bridge contains 8,279 classes; Java 21 reflection successfully resolves their class hierarchies, fields, methods and constructors with zero failures.
 - Official Fabric API base/lifecycle modules have zero missing Minecraft classes and zero missing members.
-- All 48 nested modules in Fabric API 0.116.9 reference 728 intermediary Minecraft classes. The generated bridge covers all 728 classes, but 75 Fabric API extension members remain absent because they are normally injected by Mixin. The report is stored at `pomme-jvm/reports/1.21.1/fabric-api-all-modules-abi.json`.
+- All 48 nested modules in Fabric API 0.116.9 reference 728 intermediary Minecraft classes. The generated bridge covers all 728 classes, but 72 Fabric API extension members remain absent because they are normally injected by Mixin. The report is stored at `pomme-jvm/reports/1.21.1/fabric-api-all-modules-abi.json`.
 
 This inventory separates vanilla Minecraft ABI coverage from Fabric API's Mixin-injected extension surface. Zero missing classes does not mean those extension methods work; it identifies the next concrete transformation/API gap.
 
