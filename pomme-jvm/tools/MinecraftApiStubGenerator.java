@@ -130,6 +130,37 @@ public final class MinecraftApiStubGenerator {
               );
               mv.visitInsn(Opcodes.POP);
               mv.visitInsn(Opcodes.RETURN);
+            } else if (meta.name.equals("net/minecraft/class_1309")
+                && name.equals("method_32325")
+                && desc.equals("()V")) {
+              // Preserve Lithium's three redirects in LivingEntity.tryAddFrost.
+              mv.visitVarInsn(Opcodes.ALOAD,0);
+              mv.visitMethodInsn(
+                  Opcodes.INVOKEVIRTUAL,
+                  "net/minecraft/class_1309",
+                  "method_43261",
+                  "()Lnet/minecraft/class_2680;",
+                  false
+              );
+              mv.visitMethodInsn(
+                  Opcodes.INVOKEVIRTUAL,
+                  "net/minecraft/class_2680",
+                  "method_26215",
+                  "()Z",
+                  false
+              );
+              mv.visitInsn(Opcodes.POP);
+              mv.visitVarInsn(Opcodes.ALOAD,0);
+              mv.visitInsn(Opcodes.ACONST_NULL);
+              mv.visitMethodInsn(
+                  Opcodes.INVOKEVIRTUAL,
+                  "net/minecraft/class_1309",
+                  "method_5996",
+                  "(Lnet/minecraft/class_6880;)Lnet/minecraft/class_1320;",
+                  false
+              );
+              mv.visitInsn(Opcodes.POP);
+              mv.visitInsn(Opcodes.RETURN);
             } else {
               Type ret=Type.getReturnType(desc);
               switch(ret.getSort()) {
