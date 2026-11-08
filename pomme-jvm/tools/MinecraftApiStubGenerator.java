@@ -175,6 +175,51 @@ public final class MinecraftApiStubGenerator {
                   false
               );
               mv.visitInsn(Opcodes.RETURN);
+            } else if (meta.name.equals("net/minecraft/class_1297")
+                && name.equals("method_17835")
+                && desc.equals("(Lnet/minecraft/class_243;)Lnet/minecraft/class_243;")) {
+              // Preserve Lithium's collision redirects and List local in Entity.collide.
+              mv.visitInsn(Opcodes.ACONST_NULL);
+              mv.visitVarInsn(Opcodes.ALOAD,0);
+              mv.visitInsn(Opcodes.ACONST_NULL);
+              mv.visitMethodInsn(
+                  Opcodes.INVOKEVIRTUAL,
+                  "net/minecraft/class_1937",
+                  "method_20743",
+                  "(Lnet/minecraft/class_1297;Lnet/minecraft/class_238;)Ljava/util/List;",
+                  false
+              );
+              mv.visitVarInsn(Opcodes.ASTORE,2);
+              Label collisionsStart = new Label();
+              Label collisionsEnd = new Label();
+              mv.visitLabel(collisionsStart);
+              mv.visitVarInsn(Opcodes.ALOAD,0);
+              mv.visitInsn(Opcodes.ACONST_NULL);
+              mv.visitVarInsn(Opcodes.ALOAD,2);
+              mv.visitInsn(Opcodes.ACONST_NULL);
+              mv.visitMethodInsn(
+                  Opcodes.INVOKESTATIC,
+                  "net/minecraft/class_1297",
+                  "method_59920",
+                  "(Lnet/minecraft/class_1297;Lnet/minecraft/class_1937;Ljava/util/List;Lnet/minecraft/class_238;)Ljava/util/List;",
+                  false
+              );
+              mv.visitVarInsn(Opcodes.ASTORE,3);
+              mv.visitLabel(collisionsEnd);
+              mv.visitVarInsn(Opcodes.ALOAD,0);
+              mv.visitVarInsn(Opcodes.ALOAD,1);
+              mv.visitInsn(Opcodes.ACONST_NULL);
+              mv.visitInsn(Opcodes.ACONST_NULL);
+              mv.visitVarInsn(Opcodes.ALOAD,3);
+              mv.visitMethodInsn(
+                  Opcodes.INVOKESTATIC,
+                  "net/minecraft/class_1297",
+                  "method_20736",
+                  "(Lnet/minecraft/class_1297;Lnet/minecraft/class_243;Lnet/minecraft/class_238;Lnet/minecraft/class_1937;Ljava/util/List;)Lnet/minecraft/class_243;",
+                  false
+              );
+              mv.visitInsn(Opcodes.ARETURN);
+              mv.visitLocalVariable("entityCollisions","Ljava/util/List;",null,collisionsStart,collisionsEnd,2);
             } else {
               Type ret=Type.getReturnType(desc);
               switch(ret.getSort()) {
