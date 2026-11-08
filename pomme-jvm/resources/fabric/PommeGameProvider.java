@@ -13,6 +13,11 @@ import net.fabricmc.loader.impl.game.patch.GameTransformer;
 import net.fabricmc.loader.impl.metadata.BuiltinModMetadata;
 import net.fabricmc.loader.impl.launch.FabricLauncher;
 import net.fabricmc.loader.impl.util.Arguments;
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.tree.AnnotationNode;
+import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.MethodNode;
 
 /**
  * Fabric Loader game provider for Pomme's Rust-rendered Minecraft client.
@@ -106,9 +111,35 @@ public final class PommeGameProvider implements GameProvider {
             byte[] bytes = stream.readAllBytes();
             String preview = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
             System.err.println("[POMME_RESOURCE] " + name + " bytes=" + bytes.length
-                + " refmapField=" + preview.contains("\\\"refmap\\\""));
+                + " refmapField=" + preview.contains("refmap"));
         } catch (Exception error) {
             System.err.println("[POMME_RESOURCE] " + name + " read failed: " + error);
+        }
+    }
+
+    private static void traceClassMembers(ClassLoader loader, String resource, String filter) {
+        try (var stream = loader.getResourceAsStream(resource)) {
+            if (stream == null) {
+                System.err.println("[POMME_BYTECODE] " + resource + " missing");
+                return;
+            }
+            ClassNode node = new ClassNode(Opcodes.ASM9);
+            new ClassReader(stream).accept(node, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+            System.err.println("[POMME_BYTECODE] " + node.name + " methodCount=" + node.methods.size());
+            for (MethodNode method : node.methods) {
+                if (method.name.contains(filter) || method.desc.contains("class_1304")) {
+                    System.err.println("[POMME_BYTECODE] method " + method.name + method.desc);
+                }
+                if (method.name.equals("handleStackEquip") && method.visibleAnnotations != null) {
+                    for (AnnotationNode annotation : method.visibleAnnotations) {
+                        if (annotation.desc.endsWith("/Inject;")) {
+                            System.err.println("[POMME_MIXIN] handleStackEquip Inject=" + annotation.values);
+                        }
+                    }
+                }
+            }
+        } catch (Exception error) {
+            System.err.println("[POMME_BYTECODE] " + resource + " read failed: " + error);
         }
     }
 
@@ -116,8 +147,9 @@ public final class PommeGameProvider implements GameProvider {
     public void launch(ClassLoader loader) {
         try {
             traceResource(loader, "lithium.mixins.json");
-            traceResource(loader, "lithium.refmap.json");
             traceResource(loader, "lithium-fabric.mixins.json");
+            traceClassMembers(loader, "net/minecraft/class_1309.class", "method_6116");
+            traceClassMembers(loader, "net/caffeinemc/mods/lithium/mixin/entity/equipment_tracking/LivingEntityMixin.class", "handleStackEquip");
             System.err.println("[POMME_TRACE] GameProvider.launch: before loadIntoTarget");
             Class<?> entrypoint = fabricLauncher.loadIntoTarget(getEntrypoint());
             System.err.println("[POMME_TRACE] GameProvider.launch: entrypoint class loaded");
