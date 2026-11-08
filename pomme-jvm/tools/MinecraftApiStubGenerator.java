@@ -91,6 +91,21 @@ public final class MinecraftApiStubGenerator {
                   false
               );
               mv.visitInsn(Opcodes.RETURN);
+            } else if (meta.name.equals("net/minecraft/class_1309")
+                && name.equals("method_6053")
+                && desc.equals("()V")) {
+              // Preserve Lithium's INVOKE_ASSIGN + local-capture target in updateFallFlying.
+              mv.visitVarInsn(Opcodes.ALOAD,0);
+              mv.visitInsn(Opcodes.ICONST_0);
+              mv.visitMethodInsn(
+                  Opcodes.INVOKEVIRTUAL,
+                  "net/minecraft/class_1309",
+                  "method_5795",
+                  "(I)Z",
+                  false
+              );
+              mv.visitVarInsn(Opcodes.ISTORE,1);
+              mv.visitInsn(Opcodes.RETURN);
             } else {
               Type ret=Type.getReturnType(desc);
               switch(ret.getSort()) {
