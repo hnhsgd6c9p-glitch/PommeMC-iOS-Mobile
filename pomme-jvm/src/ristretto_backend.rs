@@ -446,7 +446,7 @@ fn flatten_multi_release_jars(
             if entry.is_dir() {
                 continue;
             }
-            let name = entry.name().to_owned();
+            let name = entry.name()?.into_owned();
             let mut bytes = Vec::with_capacity(usize::try_from(entry.size()).unwrap_or(0));
             entry.read_to_end(&mut bytes)?;
 
