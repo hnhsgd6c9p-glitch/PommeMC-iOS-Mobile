@@ -156,7 +156,7 @@ public final class MinecraftApiStubGenerator {
                   Opcodes.INVOKEVIRTUAL,
                   "net/minecraft/class_1309",
                   "method_5996",
-                  "(Lnet/minecraft/class_6880;)Lnet/minecraft/class_1320;",
+                  "(Lnet/minecraft/class_6880;)Lnet/minecraft/class_1324;",
                   false
               );
               mv.visitInsn(Opcodes.POP);
