@@ -105,9 +105,14 @@ public final class MinecraftApiStubGenerator {
                   false
               );
               mv.visitVarInsn(Opcodes.ISTORE,1);
-              // INVOKE_ASSIGN with Shift.AFTER needs one instruction after the assignment.
+              // Lithium captures this boolean local after the INVOKE_ASSIGN shift.
+              Label localStart = new Label();
+              Label localEnd = new Label();
+              mv.visitLabel(localStart);
               mv.visitInsn(Opcodes.NOP);
+              mv.visitLabel(localEnd);
               mv.visitInsn(Opcodes.RETURN);
+              mv.visitLocalVariable("isFlying","Z",null,localStart,localEnd,1);
             } else {
               Type ret=Type.getReturnType(desc);
               switch(ret.getSort()) {
