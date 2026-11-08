@@ -237,12 +237,21 @@ public final class MinecraftApiStubGenerator {
             } else if (meta.name.equals("net/minecraft/class_1297")
                 && name.equals("method_5670")
                 && desc.equals("()V")) {
-              // Preserve Lithium's isPassenger injection in Entity.baseTick.
+              // Preserve Lithium's baseTick injection and sprint-particle redirect.
               mv.visitVarInsn(Opcodes.ALOAD,0);
               mv.visitMethodInsn(
                   Opcodes.INVOKEVIRTUAL,
                   "net/minecraft/class_1297",
                   "method_5765",
+                  "()Z",
+                  false
+              );
+              mv.visitInsn(Opcodes.POP);
+              mv.visitVarInsn(Opcodes.ALOAD,0);
+              mv.visitMethodInsn(
+                  Opcodes.INVOKEVIRTUAL,
+                  "net/minecraft/class_1297",
+                  "method_27298",
                   "()Z",
                   false
               );
