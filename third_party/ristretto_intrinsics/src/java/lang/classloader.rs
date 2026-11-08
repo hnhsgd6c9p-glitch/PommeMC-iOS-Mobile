@@ -18,6 +18,17 @@ use ristretto_types::{ClassRegistry, Parameters, Result};
 use std::sync::{Arc, Weak};
 use zerocopy::transmute_ref;
 
+/// Narrow class-loader tracing for the real Fabric/Knot integration test.
+fn trace_fabric_class_load(phase: &str, class_name: &str) {
+    if std::env::var_os("POMME_FABRIC_DEBUG").is_some()
+        && (class_name.starts_with("net.fabricmc.")
+            || class_name.starts_with("org.spongepowered.")
+            || class_name.starts_with("PommeGame"))
+    {
+        eprintln!("[POMME_CLASSLOAD] {phase}: {class_name}");
+    }
+}
+
 /// Class-definition flag from `OpenJDK`'s `MethodHandleNatives.Constants`.
 const NESTMATE_CLASS: i32 = 0x0000_0001;
 const HIDDEN_CLASS: i32 = 0x0000_0002;
@@ -370,7 +381,8 @@ pub async fn define_class_1_1<T: Thread + 'static>(
         let bytes: &[u8] = transmute_ref!(&*bytes);
         bytes.to_vec()
     };
-    let _name = parameters.pop()?;
+    let name = parameters.pop()?.as_string()?;
+    trace_fabric_class_load("defineClass1", &name);
     let class_loader = parameters.pop()?;
     let defining_loader = defining_class_loader(&thread, &class_loader).await?;
     let class = class_object_from_bytes(
@@ -414,7 +426,8 @@ pub async fn define_class_2_1<T: Thread + 'static>(
     };
 
     let bytes: Vec<u8> = buffer.iter().copied().skip(buffer_offset).collect();
-    let _name = parameters.pop()?;
+    let name = parameters.pop()?.as_string()?;
+    trace_fabric_class_load("defineClass2", &name);
     let class_loader = parameters.pop()?;
     let defining_loader = defining_class_loader(&thread, &class_loader).await?;
     let class = class_object_from_bytes(
@@ -484,6 +497,7 @@ pub async fn find_loaded_class_0<T: Thread + 'static>(
     mut parameters: Parameters,
 ) -> Result<Option<Value>> {
     let class_name = parameters.pop()?.as_string()?;
+    trace_fabric_class_load("findLoadedClass0", &class_name);
     let java_loader = parameters.pop()?;
     // Per JVM spec, findLoadedClass only checks whether the class was already loaded;
     // it must not trigger new class loading. Delegated resolutions belong to the
