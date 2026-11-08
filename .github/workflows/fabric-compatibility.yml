@@ -1,0 +1,67 @@
+name: Fabric compatibility
+
+on:
+  push:
+    branches: [ios-ipa-cloud-build]
+  pull_request:
+    branches: [ios-ipa-cloud-build]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fabric-compatibility-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-fabric-compatibility:
+    name: Ristretto + real Fabric mod (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CARGO_BUILD_JOBS: 4
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_INCREMENTAL: 0
+      RUST_BACKTRACE: 1
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install the repository-pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-08-21
+          components: clippy, rustfmt, rust-analyzer, rust-src
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: fabric-compat-linux
+          cache-on-failure: true
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install native build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake pkg-config libssl-dev
+
+      - name: Build the bundled Fabric Loader, Mixin, and Minecraft ABI runtime
+        run: pomme-jvm/scripts/fetch-fabric-runtime.sh 1.21.1 0.18.4 pomme-ios/Resources/FabricRuntime/1.21.1
+
+      - name: Fetch checksum-pinned third-party mod fixtures
+        run: pomme-jvm/scripts/fetch-third-party-mod-fixtures.sh /tmp/pomme-third-party-mods
+
+      - name: Run JVM and mod unit tests
+        run: cargo test -p pomme-jvm -p pomme-mod --lib --no-fail-fast
+
+      - name: Load real Lithium 0.15.4 and verify its Mixin transformation
+        env:
+          POMME_FABRIC_RUNTIME: ${{ github.workspace }}/pomme-ios/Resources/FabricRuntime/1.21.1
+          POMME_LITHIUM_JAR: /tmp/pomme-third-party-mods/lithium-fabric-0.15.4+mc1.21.1.jar
+        run: cargo test -p pomme-jvm --test third_party_lithium -- --ignored --nocapture
