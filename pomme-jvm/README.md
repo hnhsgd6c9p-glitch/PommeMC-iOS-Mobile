@@ -29,7 +29,7 @@ The Fabric Loader bootstrap test has passed on Java 21/Ristretto. It compiles a 
 
 A real third-party AppleSkin 3.0.6 fixture was then loaded with the official Fabric API. Fabric Loader discovers it and its common initializer reaches networking registration. After fixing the payload codec, identifier factory, JMX, and Log4j caller-class blockers, the client-side launch path still becomes CPU-bound while loading configuration dependencies (likely Cloth Config/Gson); the exact Ristretto frame still needs isolation. That test is retained as an ignored manual regression target rather than allowed to stall the normal suite.
 
-The next automated third-party target is Lithium 0.15.4 for Minecraft 1.21.1. Its dedicated test checks Fabric Loader discovery, actual `ModInitializer` execution, Mixin class loading, and a transformed Minecraft target. The test runs in the iOS IPA workflow after the pinned fixture and runtime are staged.
+A dedicated Linux GitHub Actions workflow now stages the runtime and a checksum-pinned Lithium 0.15.4 fixture for Minecraft 1.21.1. The first real-mod run confirms Fabric Loader discovers Lithium and initializes Mixin 0.8.7 at Java 21 compatibility, but bootstrap then stalls before the test can verify the mod initializer or transformed Minecraft target. The test times out after 240 seconds; startup trace markers have been added around Knot, the Pomme GameProvider and each initializer phase to isolate the exact blocking stage. This is not yet a passing third-party mod test.
 
 None of these tests proves that every arbitrary mod works, that all Minecraft APIs are functional, or that the iOS IPA has been installed and tested on an iPhone.
 
@@ -58,7 +58,7 @@ Not implemented yet:
 - Broad Mixin target coverage against real Minecraft classes, including all injection points and compatibility edge cases.
 - Full access-widener behavior and remapping validation across all supported mod namespace variants.
 - Java 25 / Fabric Loader profile for Minecraft 26.x.
-- Broad compatibility testing against real third-party mods, including AppleSkin's Cloth Config/Gson client initialization and large rendering mods. The Lithium 0.15.4 integration test is the next CI gate.
+- Broad compatibility testing against real third-party mods, including AppleSkin's Cloth Config/Gson client initialization and large rendering mods. Lithium 0.15.4 is currently discovered by Fabric but stalls after Mixin bootstrap; startup tracing is in progress.
 - iPhone device verification of the bundled JVM, Loader, Mixin transformations and real gameplay callbacks.
 
 ## General JVM backend

@@ -16,14 +16,26 @@ public final class PommeGameEntrypoint {
     private PommeGameEntrypoint() { }
 
     public static void main(String[] args) {
+        System.err.println("[POMME_TRACE] PommeGameEntrypoint.main: begin");
         Path gameDir = Path.of(System.getProperty("pomme.gameDir", ".")).toAbsolutePath().normalize();
+        System.err.println("[POMME_TRACE] Before class_310.getInstance");
         class_310 context = class_310.getInstance();
+        System.err.println("[POMME_TRACE] After class_310.getInstance");
         context.initialize(gameDir, System.getProperty("pomme.minecraftVersion", "unknown"));
+        System.err.println("[POMME_TRACE] After Minecraft bridge initialize");
         FabricLoaderImpl loader = FabricLoaderImpl.INSTANCE;
+        System.err.println("[POMME_TRACE] Before FabricLoaderImpl.prepareModInit");
         loader.prepareModInit(gameDir, context);
+        System.err.println("[POMME_TRACE] After FabricLoaderImpl.prepareModInit");
+        System.err.println("[POMME_TRACE] Before preLaunch entrypoints");
         loader.invokeEntrypoints("preLaunch", PreLaunchEntrypoint.class, PreLaunchEntrypoint::onPreLaunch);
+        System.err.println("[POMME_TRACE] After preLaunch entrypoints");
+        System.err.println("[POMME_TRACE] Before main entrypoints");
         loader.invokeEntrypoints("main", ModInitializer.class, ModInitializer::onInitialize);
+        System.err.println("[POMME_TRACE] After main entrypoints");
+        System.err.println("[POMME_TRACE] Before client entrypoints");
         loader.invokeEntrypoints("client", ClientModInitializer.class, ClientModInitializer::onInitializeClient);
+        System.err.println("[POMME_TRACE] After client entrypoints");
     }
 
     /** Native game-loop dispatch points; Fabric API events are attached here. */

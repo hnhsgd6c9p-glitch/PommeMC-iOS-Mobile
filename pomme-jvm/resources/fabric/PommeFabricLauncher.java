@@ -16,6 +16,8 @@ public final class PommeFabricLauncher {
         System.setProperty("pomme.intermediaryJar", args[3]);
         System.setProperty("fabric.modsFolder", args[1]);
         System.setProperty("fabric.side", "client");
+        System.err.println("[POMME_TRACE] Before KnotClient.main");
         KnotClient.main(new String[0]);
+        System.err.println("[POMME_TRACE] After KnotClient.main");
     }
 }

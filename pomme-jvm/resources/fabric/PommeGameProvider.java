@@ -70,12 +70,15 @@ public final class PommeGameProvider implements GameProvider {
 
     @Override
     public boolean locateGame(FabricLauncher launcher, String[] args) {
+        System.err.println("[POMME_TRACE] locateGame: begin");
         arguments.parse(args);
+        System.err.println("[POMME_TRACE] locateGame: complete");
         return true;
     }
 
     @Override
     public void initialize(FabricLauncher launcher) {
+        System.err.println("[POMME_TRACE] GameProvider.initialize: begin");
         this.fabricLauncher = launcher;
         String modsDir = System.getProperty("pomme.modsDir");
         if (modsDir != null && !modsDir.isBlank()) {
@@ -84,6 +87,7 @@ public final class PommeGameProvider implements GameProvider {
         System.setProperty("fabric.side", "client");
         System.setProperty("fabric.development", "false");
         transformer.locateEntrypoints(launcher, launcher.getClassPath());
+        System.err.println("[POMME_TRACE] GameProvider.initialize: complete");
     }
 
     @Override public GameTransformer getEntrypointTransformer() { return transformer; }
@@ -96,9 +100,13 @@ public final class PommeGameProvider implements GameProvider {
     @Override
     public void launch(ClassLoader loader) {
         try {
+            System.err.println("[POMME_TRACE] GameProvider.launch: before loadIntoTarget");
             Class<?> entrypoint = fabricLauncher.loadIntoTarget(getEntrypoint());
+            System.err.println("[POMME_TRACE] GameProvider.launch: entrypoint class loaded");
             activeEntrypoint = entrypoint;
+            System.err.println("[POMME_TRACE] GameProvider.launch: before PommeGameEntrypoint.main");
             entrypoint.getMethod("main", String[].class).invoke(null, (Object) new String[0]);
+            System.err.println("[POMME_TRACE] GameProvider.launch: PommeGameEntrypoint.main returned");
         } catch (ReflectiveOperationException error) {
             throw new RuntimeException("Could not start Pomme's Fabric game bridge", error);
         }
