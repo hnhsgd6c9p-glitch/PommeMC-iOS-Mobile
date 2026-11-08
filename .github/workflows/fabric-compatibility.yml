@@ -57,6 +57,9 @@ jobs:
       - name: Build the bundled Fabric Loader, Mixin, and Minecraft ABI runtime
         run: pomme-jvm/scripts/fetch-fabric-runtime.sh 1.21.1 0.18.4 pomme-ios/Resources/FabricRuntime/1.21.1
 
+      - name: Test Java multi-release JAR selection
+        run: cargo test -p pomme-jvm --lib multi_release_jar_tests -- --nocapture
+
       - name: Fetch checksum-pinned third-party mod fixtures
         run: pomme-jvm/scripts/fetch-third-party-mod-fixtures.sh /tmp/pomme-third-party-mods
 
