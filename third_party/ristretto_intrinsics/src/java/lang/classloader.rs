@@ -1,9 +1,9 @@
-use crate::bounds;
-use crate::java::lang::class::{get_class, get_class_no_init};
-use ristretto_classfile::attributes::Attribute;
-use ristretto_classfile::VerifyMode;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Weak};
+
 use ristretto_classfile::VersionSpecification::{Any, GreaterThan, LessThanOrEqual};
-use ristretto_classfile::{ClassFile, JAVA_8, JAVA_11, JavaStr};
+use ristretto_classfile::attributes::Attribute;
+use ristretto_classfile::{ClassFile, JAVA_8, JAVA_11, JavaStr, VerifyMode};
 use ristretto_classloader::{Class, ClassLoader, Reference, Value};
 use ristretto_gc::Gc;
 use ristretto_gc::sync::RwLock;
@@ -11,20 +11,23 @@ use ristretto_macros::intrinsic_method;
 use ristretto_types::JavaError::{
     ClassFormatError, IndexOutOfBoundsException, NoClassDefFoundError,
 };
-use ristretto_types::JavaObject;
-use ristretto_types::Thread;
-use ristretto_types::VM;
-use ristretto_types::{ClassRegistry, Parameters, Result};
-use std::sync::{Arc, Weak};
+use ristretto_types::{ClassRegistry, JavaObject, Parameters, Result, Thread, VM};
 use zerocopy::transmute_ref;
+
+use crate::bounds;
+use crate::java::lang::class::{get_class, get_class_no_init};
 
 /// Narrow class-loader tracing for the real Fabric/Knot integration test.
 fn trace_fabric_class_load(phase: &str, class_name: &str) {
-    if std::env::var_os("POMME_FABRIC_DEBUG").is_some()
+    static TRACE_COUNT: AtomicUsize = AtomicUsize::new(0);
+    let trace_all = std::env::var_os("POMME_CLASSLOAD_TRACE").is_some();
+    let trace_fabric = std::env::var_os("POMME_FABRIC_DEBUG").is_some()
         && (class_name.starts_with("net.fabricmc.")
             || class_name.starts_with("org.spongepowered.")
-            || class_name.starts_with("PommeGame"))
-    {
+            || class_name.starts_with("PommeGame"));
+    if trace_all && TRACE_COUNT.fetch_add(1, Ordering::Relaxed) < 500 {
+        eprintln!("[POMME_CLASSLOAD] {phase}: {class_name}");
+    } else if trace_fabric {
         eprintln!("[POMME_CLASSLOAD] {phase}: {class_name}");
     }
 }
@@ -33,20 +36,21 @@ fn trace_fabric_class_load(phase: &str, class_name: &str) {
 const NESTMATE_CLASS: i32 = 0x0000_0001;
 const HIDDEN_CLASS: i32 = 0x0000_0002;
 
-/// Set the defining class loader and module on a class mirror created by defineClass.
+/// Set the defining class loader and module on a class mirror created by
+/// defineClass.
 ///
-/// Per JVM spec §5.3.5, when defineClass is called, the class is defined by the given
-/// class loader. The class belongs to the unnamed module of that class loader (§7.7.5).
-/// This function sets both the `classLoader` and `module` fields on the java.lang.Class
-/// mirror to maintain consistency between the classLoader identity and the module's
-/// owning classLoader.
+/// Per JVM spec §5.3.5, when defineClass is called, the class is defined by the
+/// given class loader. The class belongs to the unnamed module of that class
+/// loader (§7.7.5). This function sets both the `classLoader` and `module`
+/// fields on the java.lang.Class mirror to maintain consistency between the
+/// classLoader identity and the module's owning classLoader.
 fn set_defining_class_loader(class: &Value, class_loader: &Value) -> Result<()> {
     if class_loader.is_null() {
         return Ok(());
     }
 
-    // Read the unnamed module from the classLoader before mutating the class mirror.
-    // If the field doesn't exist (e.g. pre-Java 9), treat as no module.
+    // Read the unnamed module from the classLoader before mutating the class
+    // mirror. If the field doesn't exist (e.g. pre-Java 9), treat as no module.
     let unnamed_module = {
         let cl_obj = class_loader.as_object_ref()?;
         match cl_obj.value("unnamedModule") {
@@ -75,8 +79,9 @@ pub(crate) async fn defining_class_loader<T: Thread + 'static>(
 }
 
 /// Create a `java.lang.Class` object from a byte array.
-/// This method is used by the `defineClass0`, `defineClass1`, and `defineClass2` native methods.
-/// The `defineClass0` method is used by Java 8 and earlier versions.
+/// This method is used by the `defineClass0`, `defineClass1`, and
+/// `defineClass2` native methods. The `defineClass0` method is used by Java 8
+/// and earlier versions.
 async fn class_object_from_bytes<T: Thread + 'static>(
     thread: &Arc<T>,
     source_file: Option<Gc<RwLock<Reference>>>,
@@ -151,7 +156,10 @@ async fn class_object_from_bytes<T: Thread + 'static>(
 
     // Only an explicit hidden-class flag makes a definition hidden.
     //
-    // Guessing from the class name (`$$` was previously treated as a hidden-class marker) breaks ordinary generated classes: Spring CGLIB names its enhanced configuration classes `X$$SpringCGLIB$$0`, and such a class must remain findable by name via `Class.forName`.
+    // Guessing from the class name (`$$` was previously treated as a hidden-class
+    // marker) breaks ordinary generated classes: Spring CGLIB names its enhanced
+    // configuration classes `X$$SpringCGLIB$$0`, and such a class must remain
+    // findable by name via `Class.forName`.
 
     let class = if is_hidden {
         let suffix = vm.next_hidden_class_suffix()?;
@@ -329,7 +337,8 @@ pub async fn define_class_0_1<T: Thread + 'static>(
     let _name = parameters.pop()?.as_string()?;
     let lookup = parameters.pop()?;
     let lookup_class = get_class(&thread, &lookup).await?;
-    // Runtime package identity includes the defining loader in the Rust class metadata.
+    // Runtime package identity includes the defining loader in the Rust class
+    // metadata.
     let defining_class_loader = lookup_class.class_loader()?.as_ref().map(Arc::downgrade);
     let class = class_object_from_bytes(
         &thread,
@@ -355,7 +364,8 @@ pub async fn define_class_0_1<T: Thread + 'static>(
     defined_class.set_module_name(lookup_class.module_name()?)?;
     let class_loader = parameters.pop()?;
     set_defining_class_loader(&class, &class_loader)?;
-    // Set classData for hidden classes; this is used by StringConcatFactory and others
+    // Set classData for hidden classes; this is used by StringConcatFactory and
+    // others
     if !class_data.is_null() {
         let mut class_object = class.as_object_mut()?;
         class_object.set_value("classData", class_data)?;
@@ -483,8 +493,9 @@ pub async fn find_builtin_lib<T: Thread + 'static>(
     mut parameters: Parameters,
 ) -> Result<Option<Value>> {
     let library_name_str = parameters.pop()?.as_string()?;
-    // These libraries are implemented by Ristretto intrinsics rather than host shared objects.
-    // Java 8 and 11 load net, nio, and sctp before invoking the SCTP native entry points.
+    // These libraries are implemented by Ristretto intrinsics rather than host
+    // shared objects. Java 8 and 11 load net, nio, and sctp before invoking the
+    // SCTP native entry points.
     if crate::native_library::is_intrinsic_native_library(&library_name_str) {
         let library_name = library_name_str.to_object(&thread).await?;
         return Ok(Some(library_name));
@@ -503,9 +514,10 @@ pub async fn find_loaded_class_0<T: Thread + 'static>(
     let class_name = parameters.pop()?.as_string()?;
     trace_fabric_class_load("findLoadedClass0", &class_name);
     let java_loader = parameters.pop()?;
-    // Per JVM spec, findLoadedClass only checks whether the class was already loaded;
-    // it must not trigger new class loading. Delegated resolutions belong to the
-    // initiating loader even when the definition lives outside its parent chain.
+    // Per JVM spec, findLoadedClass only checks whether the class was already
+    // loaded; it must not trigger new class loading. Delegated resolutions
+    // belong to the initiating loader even when the definition lives outside
+    // its parent chain.
     let vm = thread.vm()?;
     if let Some(class) = ClassRegistry::for_vm(&*vm)?.initiated_class(&java_loader, &class_name) {
         return Ok(Some(class));
@@ -582,8 +594,9 @@ pub fn retrieve_directives<T: Thread + 'static>(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use ristretto_classloader::ClassLoaderType;
+
+    use super::*;
 
     #[tokio::test]
     async fn test_native_definition_preserves_builtin_loader_identity() -> Result<()> {
@@ -637,7 +650,8 @@ mod tests {
         assert_eq!(other_loader.loader_type(), None);
         assert!(!Arc::ptr_eq(&expected, &other_loader));
 
-        // A same-named class from an unrelated loader must not acquire system privileges.
+        // A same-named class from an unrelated loader must not acquire system
+        // privileges.
         let unrelated = Class::from(None, app_class.class_file().clone())?;
         unrelated.set_parent(app_class.parent()?)?;
         let unrelated = Value::from_object(
