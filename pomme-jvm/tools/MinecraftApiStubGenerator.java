@@ -113,6 +113,23 @@ public final class MinecraftApiStubGenerator {
               mv.visitLabel(localEnd);
               mv.visitInsn(Opcodes.RETURN);
               mv.visitLocalVariable("isFlying","Z",null,localStart,localEnd,1);
+            } else if (meta.name.equals("net/minecraft/class_1309")
+                && name.equals("method_6070")
+                && desc.equals("()V")) {
+              // Preserve Lithium's Redirect target in LivingEntity.pushEntities.
+              mv.visitInsn(Opcodes.ACONST_NULL);
+              mv.visitVarInsn(Opcodes.ALOAD,0);
+              mv.visitInsn(Opcodes.ACONST_NULL);
+              mv.visitInsn(Opcodes.ACONST_NULL);
+              mv.visitMethodInsn(
+                  Opcodes.INVOKEVIRTUAL,
+                  "net/minecraft/class_1937",
+                  "method_8333",
+                  "(Lnet/minecraft/class_1297;Lnet/minecraft/class_238;Ljava/util/function/Predicate;)Ljava/util/List;",
+                  false
+              );
+              mv.visitInsn(Opcodes.POP);
+              mv.visitInsn(Opcodes.RETURN);
             } else {
               Type ret=Type.getReturnType(desc);
               switch(ret.getSort()) {
