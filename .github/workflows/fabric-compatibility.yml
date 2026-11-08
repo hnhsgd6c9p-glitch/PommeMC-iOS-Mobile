@@ -63,4 +63,6 @@ jobs:
         env:
           POMME_FABRIC_RUNTIME: ${{ github.workspace }}/pomme-ios/Resources/FabricRuntime/1.21.1
           POMME_LITHIUM_JAR: /tmp/pomme-third-party-mods/lithium-fabric-0.15.4+mc1.21.1.jar
+          # Emit Fabric's class-load and Mixin transformation diagnostics around Knot.loadIntoTarget().
+          POMME_FABRIC_DEBUG: "1"
         run: cargo test -p pomme-jvm --test third_party_lithium -- --ignored --nocapture
