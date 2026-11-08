@@ -81,9 +81,14 @@ fn set_unix_metadata_fields(
 }
 
 #[cfg(target_family = "unix")]
-#[cfg_attr(target_os = "macos", expect(clippy::cast_possible_wrap))]
+#[cfg_attr(
+    any(target_os = "macos", target_os = "ios"),
+    expect(clippy::cast_possible_wrap)
+)]
 fn set_stat_fields(object: &mut ristretto_classloader::Object, stat: &libc::stat) -> Result<()> {
-    #[cfg(target_os = "macos")]
+    // iOS uses Darwin's stat layout just like macOS. In particular, st_dev and
+    // st_rdev are signed dev_t values there, not the unsigned Linux types.
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     let (mode, inode, device, raw_device, link_count, user_id, group_id) = (
         i32::from(stat.st_mode),
         stat.st_ino as i64,
@@ -93,7 +98,7 @@ fn set_stat_fields(object: &mut ristretto_classloader::Object, stat: &libc::stat
         stat.st_uid as i32,
         stat.st_gid as i32,
     );
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
     let (mode, inode, device, raw_device, link_count, user_id, group_id) = (
         wrapping_i32_from_unsigned(stat.st_mode),
         wrapping_i64_from_unsigned(stat.st_ino),
