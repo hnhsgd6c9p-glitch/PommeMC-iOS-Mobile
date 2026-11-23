@@ -1,0 +1,845 @@
+use crate::bounds;
+use crate::java::io::socketfiledescriptor::get_fd;
+use crate::java::nio::mapped_regions::{MapMode, MappedRegion, MappedRegions};
+use crate::sun::nio::fs::managed_files;
+use ristretto_classfile::VersionSpecification::GreaterThanOrEqual;
+use ristretto_classfile::{JAVA_21, JAVA_25};
+use ristretto_classloader::Value;
+use ristretto_macros::intrinsic_method;
+use ristretto_types::Error::InternalError;
+use ristretto_types::JavaError;
+use ristretto_types::Thread;
+use ristretto_types::VM;
+use ristretto_types::{Parameters, Result};
+use std::io::SeekFrom;
+#[cfg(target_family = "unix")]
+use std::os::unix::fs::{FileTypeExt, MetadataExt};
+use std::sync::Arc;
+
+fn io_status(operation: &str, error: &std::io::Error) -> Result<i64> {
+    match error.kind() {
+        std::io::ErrorKind::WouldBlock => Ok(-2),
+        std::io::ErrorKind::Interrupted => Ok(-3),
+        _ => Err(JavaError::IoException(format!("{operation}: {error}")).into()),
+    }
+}
+
+#[cfg_attr(
+    target_os = "wasi",
+    expect(
+        clippy::unused_async,
+        reason = "native platforms read metadata asynchronously"
+    )
+)]
+async fn file_key<V: VM>(vm: &V, fd: i64) -> Option<(u64, u64)> {
+    #[cfg(target_os = "wasi")]
+    {
+        let _ = (vm, fd);
+        None
+    }
+    #[cfg(target_family = "unix")]
+    managed_files::metadata(vm.file_handles(), fd)
+        .await
+        .ok()
+        .map(|metadata| (metadata.dev(), metadata.ino()))
+}
+
+async fn flush_writable_mappings<V: VM>(vm: &V, fd: i64) {
+    let file_handles = vm.file_handles();
+    let current_file_key = file_key(vm, fd).await;
+    if let Ok(regions) = vm.resource_manager().get_or_init(MappedRegions::new) {
+        for (address, region) in regions.writable_entries_for_fd(fd) {
+            if region.file_key.is_some() && region.file_key != current_file_key {
+                continue;
+            }
+            let bytes = vm.native_memory().read_bytes(address, region.length);
+            let _ = managed_files::write_at(file_handles, fd, &bytes, region.position).await;
+        }
+    }
+}
+
+#[intrinsic_method(
+    "sun/nio/ch/UnixFileDispatcherImpl.allocationGranularity0()J",
+    GreaterThanOrEqual(JAVA_21)
+)]
+pub fn allocation_granularity_0<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    #[cfg(target_family = "unix")]
+    #[expect(unsafe_code)]
+    let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
+    #[cfg(target_os = "wasi")]
+    let page_size = 65536;
+    if page_size <= 0 {
+        return Err(JavaError::IoException(
+            "allocationGranularity0: unable to determine the system page size".to_string(),
+        )
+        .into());
+    }
+    Ok(Some(Value::Long(platform_long_to_i64(page_size))))
+}
+
+fn platform_long_to_i64<T: Into<i64>>(value: T) -> i64 {
+    value.into()
+}
+
+#[intrinsic_method(
+    "sun/nio/ch/UnixFileDispatcherImpl.available0(Ljava/io/FileDescriptor;)I",
+    GreaterThanOrEqual(JAVA_25)
+)]
+pub async fn available_0<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let fd_value = parameters.pop()?;
+    let fd = i64::from(get_fd(&fd_value)?);
+    let vm = thread.vm()?;
+    let file_handles = vm.file_handles();
+    let metadata = managed_files::metadata(file_handles, fd).await.ok();
+    #[cfg(target_family = "unix")]
+    if metadata.as_ref().is_some_and(|value| {
+        let kind = value.file_type();
+        kind.is_char_device() || kind.is_fifo() || kind.is_socket()
+    }) {
+        let mut available = 0_i32;
+        #[expect(unsafe_code)]
+        // SAFETY: available points to writable storage and fd is the descriptor supplied by NIO.
+        let result = unsafe {
+            libc::ioctl(
+                i32::try_from(fd).unwrap_or(-1),
+                libc::FIONREAD,
+                &raw mut available,
+            )
+        };
+        if result >= 0 {
+            return Ok(Some(Value::Int(available.max(0))));
+        }
+    }
+
+    let Some(position) = managed_files::seek(file_handles, fd, SeekFrom::Current(0))
+        .await
+        .ok()
+    else {
+        return Ok(Some(Value::Int(0)));
+    };
+    let mut size = metadata
+        .filter(std::fs::Metadata::is_file)
+        .map_or(0, |value| value.len());
+    if size < position {
+        let Ok(end) = managed_files::seek(file_handles, fd, SeekFrom::End(0)).await else {
+            return Ok(Some(Value::Int(0)));
+        };
+        if managed_files::seek(file_handles, fd, SeekFrom::Start(position))
+            .await
+            .is_err()
+        {
+            return Ok(Some(Value::Int(0)));
+        }
+        size = end;
+    }
+    let available = size.saturating_sub(position);
+    Ok(Some(Value::Int(
+        i32::try_from(available).unwrap_or(i32::MAX),
+    )))
+}
+
+#[intrinsic_method(
+    "sun/nio/ch/UnixFileDispatcherImpl.closeIntFD(I)V",
+    GreaterThanOrEqual(JAVA_21)
+)]
+pub async fn close_int_fd<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let fd = parameters.pop_int()?;
+    let vm = thread.vm()?;
+    if let Ok(regions) = vm.resource_manager().get_or_init(MappedRegions::new) {
+        regions.remove_fd(i64::from(fd));
+    }
+    managed_files::close(vm.file_handles(), i64::from(fd)).await;
+    #[cfg(target_family = "unix")]
+    let _ = super::posix::close_descriptor(&*vm, fd)?;
+    #[cfg(not(target_family = "wasm"))]
+    vm.socket_handles().remove(&fd).await;
+    Ok(None)
+}
+
+#[intrinsic_method(
+    "sun/nio/ch/UnixFileDispatcherImpl.force0(Ljava/io/FileDescriptor;Z)I",
+    GreaterThanOrEqual(JAVA_21)
+)]
+pub async fn force_0<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let metadata_only = parameters.pop_int()? != 0;
+    let fd_value = parameters.pop()?;
+    let fd = i64::from(get_fd(&fd_value)?);
+    let vm = thread.vm()?;
+    let file_handles = vm.file_handles();
+    flush_writable_mappings(&*vm, fd).await;
+    if metadata_only {
+        managed_files::sync_data(file_handles, fd)
+            .await
+            .map_err(|e| JavaError::IoException(format!("force0: {e}")))?;
+    } else {
+        managed_files::sync_all(file_handles, fd)
+            .await
+            .map_err(|e| JavaError::IoException(format!("force0: {e}")))?;
+    }
+    Ok(Some(Value::Int(0)))
+}
+
+#[intrinsic_method(
+    "sun/nio/ch/UnixFileDispatcherImpl.isOther0(Ljava/io/FileDescriptor;)Z",
+    GreaterThanOrEqual(JAVA_25)
+)]
+pub async fn is_other_0<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let fd_value = parameters.pop()?;
+    let fd = i64::from(get_fd(&fd_value)?);
+    let vm = thread.vm()?;
+    let metadata = managed_files::metadata(vm.file_handles(), fd)
+        .await
+        .map_err(|e| JavaError::IoException(format!("isOther0: {e}")))?;
+    let is_other = !metadata.is_file() && !metadata.is_dir() && !metadata.is_symlink();
+    Ok(Some(Value::Int(i32::from(is_other))))
+}
+
+#[cfg(target_os = "wasi")]
+#[intrinsic_method(
+    "sun/nio/ch/UnixFileDispatcherImpl.lock0(Ljava/io/FileDescriptor;ZJJZ)I",
+    GreaterThanOrEqual(JAVA_21)
+)]
+pub async fn lock_0<T: Thread + 'static>(
+    thread: Arc<T>,
+    parameters: Parameters,
+) -> Result<Option<Value>> {
+    super::filedispatcherimpl::lock_0(thread, parameters).await
+}
+
+#[cfg(target_family = "unix")]
+#[intrinsic_method(
+    "sun/nio/ch/UnixFileDispatcherImpl.lock0(Ljava/io/FileDescriptor;ZJJZ)I",
+    GreaterThanOrEqual(JAVA_21)
+)]
+pub async fn lock_0<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let shared = parameters.pop_int()? != 0;
+    let size = parameters.pop_long()?;
+    let pos = parameters.pop_long()?;
+    let blocking = parameters.pop_int()? != 0;
+    let fd_value = parameters.pop()?;
+    let fd = i64::from(get_fd(&fd_value)?);
+
+    let value = managed_files::lock_range(
+        thread.vm()?.file_handles(),
+        fd,
+        u64::try_from(pos).map_err(|_| InternalError("lock0: negative position".to_string()))?,
+        u64::try_from(size).map_err(|_| InternalError("lock0: negative size".to_string()))?,
+        shared,
+        blocking,
+    )
+    .await
+    .map_err(|e| JavaError::IoException(format!("lock0: {e}")))?;
+
+    Ok(Some(Value::Int(value)))
+}
+
+#[intrinsic_method(
+    "sun/nio/ch/UnixFileDispatcherImpl.map0(Ljava/io/FileDescriptor;IJJZ)J",
+    GreaterThanOrEqual(JAVA_21)
+)]
+pub async fn map_0<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _is_sync = parameters.pop_int()? != 0;
+    let length = parameters.pop_long()?;
+    let position = parameters.pop_long()?;
+    let prot = parameters.pop_int()?;
+    let fd_value = parameters.pop()?;
+    let fd = i64::from(get_fd(&fd_value)?);
+    let vm = thread.vm()?;
+    let length =
+        u64::try_from(length).map_err(|_| InternalError("map0: negative length".to_string()))?;
+    let position = u64::try_from(position)
+        .map_err(|_| InternalError("map0: negative position".to_string()))?;
+
+    let len =
+        usize::try_from(length).map_err(|_| InternalError("map0: length too large".to_string()))?;
+    let address = vm
+        .native_memory()
+        .allocate(len.max(1))
+        .ok_or_else(|| JavaError::OutOfMemoryError(format!("Unable to map {len} bytes")))?;
+    let file_handles = vm.file_handles();
+    let mut buf = Vec::new();
+    if buf.try_reserve_exact(len).is_err() {
+        vm.native_memory().free(address);
+        return Err(JavaError::OutOfMemoryError(format!("Unable to map {len} bytes")).into());
+    }
+    buf.resize(len, 0);
+    if len > 0
+        && let Err(error) = managed_files::read_at(file_handles, fd, &mut buf, position).await
+    {
+        vm.native_memory().free(address);
+        return Err(JavaError::IoException(format!("map0: {error}")).into());
+    }
+    if len > 0 {
+        vm.native_memory().write_bytes(address, &buf);
+    }
+    let mode = MapMode::from_int(prot).unwrap_or(MapMode::ReadOnly);
+    let file_key = file_key(&*vm, fd).await;
+    let regions = vm.resource_manager().get_or_init(MappedRegions::new)?;
+    regions.insert(
+        address,
+        MappedRegion {
+            fd,
+            position,
+            length: len,
+            mode,
+            file_key,
+            path: None,
+        },
+    );
+    Ok(Some(Value::Long(address)))
+}
+
+#[intrinsic_method(
+    "sun/nio/ch/UnixFileDispatcherImpl.pread0(Ljava/io/FileDescriptor;JIJ)I",
+    GreaterThanOrEqual(JAVA_21)
+)]
+pub async fn pread_0<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let position = parameters.pop_long()?;
+    let count = parameters.pop_int()?;
+    let address = parameters.pop_long()?;
+    let fd_value = parameters.pop()?;
+    let fd = i64::from(get_fd(&fd_value)?);
+
+    let count = usize::try_from(count)?;
+    let vm = thread.vm()?;
+    let file_handles = vm.file_handles();
+    flush_writable_mappings(&*vm, fd).await;
+
+    // Save current position
+    let offset = u64::try_from(position)
+        .map_err(|_| InternalError("pread0: negative position".to_string()))?;
+    let mut buf = vec![0u8; count];
+    let n = managed_files::read_at(file_handles, fd, &mut buf, offset)
+        .await
+        .map_err(|e| JavaError::IoException(format!("pread0: {e}")))?;
+
+    if n > 0 {
+        let bytes = bounds::range_to(&buf, ..n, "pread0")?;
+        vm.native_memory().write_bytes(address, bytes);
+    }
+    // Return -1 for EOF per JVM spec
+    let result = if n == 0 && count > 0 {
+        -1
+    } else {
+        i32::try_from(n)?
+    };
+    Ok(Some(Value::Int(result)))
+}
+
+#[intrinsic_method(
+    "sun/nio/ch/UnixFileDispatcherImpl.pwrite0(Ljava/io/FileDescriptor;JIJ)I",
+    GreaterThanOrEqual(JAVA_21)
+)]
+pub async fn pwrite_0<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let position = parameters.pop_long()?;
+    let count = parameters.pop_int()?;
+    let address = parameters.pop_long()?;
+    let fd_value = parameters.pop()?;
+    let fd = i64::from(get_fd(&fd_value)?);
+
+    let count = usize::try_from(count)?;
+    let vm = thread.vm()?;
+    let file_handles = vm.file_handles();
+
+    let data = vm.native_memory().read_bytes(address, count);
+    // Save current position
+    let offset = u64::try_from(position)
+        .map_err(|_| InternalError("pwrite0: negative position".to_string()))?;
+    let n = managed_files::write_at(file_handles, fd, &data, offset)
+        .await
+        .map_err(|e| JavaError::IoException(format!("pwrite0: {e}")))?;
+
+    Ok(Some(Value::Int(i32::try_from(n)?)))
+}
+
+#[intrinsic_method(
+    "sun/nio/ch/UnixFileDispatcherImpl.read0(Ljava/io/FileDescriptor;JI)I",
+    GreaterThanOrEqual(JAVA_21)
+)]
+pub async fn read_0<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let count = parameters.pop_int()?;
+    let address = parameters.pop_long()?;
+    let fd_value = parameters.pop()?;
+    let fd = i64::from(get_fd(&fd_value)?);
+
+    let count = usize::try_from(count)?;
+    let mut buf = vec![0u8; count];
+
+    let vm = thread.vm()?;
+    flush_writable_mappings(&*vm, fd).await;
+    match managed_files::read(vm.file_handles(), fd, &mut buf).await {
+        Ok(n) => {
+            if n > 0 {
+                let bytes = bounds::range_to(&buf, ..n, "read0")?;
+                vm.native_memory().write_bytes(address, bytes);
+            }
+            // Return -1 for EOF per JVM spec
+            let result = if n == 0 && count > 0 {
+                -1
+            } else {
+                i32::try_from(n)?
+            };
+            Ok(Some(Value::Int(result)))
+        }
+        Err(error) => Ok(Some(Value::Int(i32::try_from(io_status(
+            "UnixFileDispatcherImpl.read0",
+            &error,
+        )?)?))),
+    }
+}
+
+#[intrinsic_method(
+    "sun/nio/ch/UnixFileDispatcherImpl.readv0(Ljava/io/FileDescriptor;JI)J",
+    GreaterThanOrEqual(JAVA_21)
+)]
+pub async fn readv_0<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let count = parameters.pop_int()?;
+    let address = parameters.pop_long()?;
+    let fd_value = parameters.pop()?;
+    let fd = i64::from(get_fd(&fd_value)?);
+
+    let vm = thread.vm()?;
+    let native_memory = vm.native_memory();
+    let file_handles = vm.file_handles();
+    flush_writable_mappings(&*vm, fd).await;
+
+    let count = usize::try_from(count)?;
+    let mut chunks = Vec::with_capacity(count);
+    let mut iov_bases = Vec::with_capacity(count);
+
+    for i in 0..count {
+        let iov_offset = i64::try_from(i)? * 16;
+        let iov_base = native_memory
+            .read_i64(address + iov_offset)
+            .ok_or_else(|| InternalError("readv0: bad iov_base".to_string()))?;
+        let iov_len = native_memory
+            .read_i64(address + iov_offset + 8)
+            .ok_or_else(|| InternalError("readv0: bad iov_len".to_string()))?;
+        let len = usize::try_from(iov_len)?;
+
+        if len > 0 {
+            chunks.push(vec![0u8; len]);
+            iov_bases.push(iov_base);
+        }
+    }
+
+    if chunks.is_empty() {
+        return Ok(Some(Value::Long(0)));
+    }
+
+    let (n, returned_chunks) = match managed_files::readv(file_handles, fd, chunks).await {
+        Ok(result) => result,
+        Err(error) => {
+            return Ok(Some(Value::Long(io_status(
+                "UnixFileDispatcherImpl.readv0",
+                &error,
+            )?)));
+        }
+    };
+
+    if n == 0 {
+        return Ok(Some(Value::Long(-1)));
+    }
+
+    let mut total: i64 = 0;
+    let mut remaining = n;
+    for (base, chunk) in iov_bases.iter().zip(returned_chunks) {
+        if remaining == 0 {
+            break;
+        }
+        let chunk_len = std::cmp::min(remaining, chunk.len());
+        let bytes = bounds::range_to(&chunk, ..chunk_len, "readv0")?;
+        native_memory.write_bytes(*base, bytes);
+        total += i64::try_from(chunk_len)?;
+        remaining -= chunk_len;
+    }
+
+    Ok(Some(Value::Long(total)))
+}
+
+#[cfg(target_os = "wasi")]
+#[intrinsic_method(
+    "sun/nio/ch/UnixFileDispatcherImpl.release0(Ljava/io/FileDescriptor;JJ)V",
+    GreaterThanOrEqual(JAVA_21)
+)]
+pub async fn release_0<T: Thread + 'static>(
+    thread: Arc<T>,
+    parameters: Parameters,
+) -> Result<Option<Value>> {
+    super::filedispatcherimpl::release_0(thread, parameters).await
+}
+
+#[cfg(target_family = "unix")]
+#[intrinsic_method(
+    "sun/nio/ch/UnixFileDispatcherImpl.release0(Ljava/io/FileDescriptor;JJ)V",
+    GreaterThanOrEqual(JAVA_21)
+)]
+pub async fn release_0<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let size = parameters.pop_long()?;
+    let pos = parameters.pop_long()?;
+    let fd_value = parameters.pop()?;
+    let fd = i64::from(get_fd(&fd_value)?);
+
+    managed_files::unlock_range(
+        thread.vm()?.file_handles(),
+        fd,
+        u64::try_from(pos).map_err(|_| InternalError("release0: negative position".to_string()))?,
+        u64::try_from(size).map_err(|_| InternalError("release0: negative size".to_string()))?,
+    )
+    .await
+    .map_err(|e| JavaError::IoException(format!("release0: {e}")))?;
+
+    Ok(None)
+}
+
+#[intrinsic_method(
+    "sun/nio/ch/UnixFileDispatcherImpl.seek0(Ljava/io/FileDescriptor;J)J",
+    GreaterThanOrEqual(JAVA_21)
+)]
+pub async fn seek_0<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let pos = parameters.pop_long()?;
+    let fd_value = parameters.pop()?;
+    let fd = i64::from(get_fd(&fd_value)?);
+
+    let vm = thread.vm()?;
+    let result = if pos == -1 {
+        // Return current position
+        managed_files::seek(vm.file_handles(), fd, SeekFrom::Current(0))
+            .await
+            .map_err(|e| JavaError::IoException(format!("seek0: {e}")))?
+    } else {
+        let offset = u64::try_from(pos)
+            .map_err(|_| InternalError("seek0: negative position".to_string()))?;
+        managed_files::seek(vm.file_handles(), fd, SeekFrom::Start(offset))
+            .await
+            .map_err(|e| JavaError::IoException(format!("seek0: {e}")))?
+    };
+    Ok(Some(Value::Long(i64::try_from(result)?)))
+}
+
+#[intrinsic_method(
+    "sun/nio/ch/UnixFileDispatcherImpl.setDirect0(Ljava/io/FileDescriptor;)I",
+    GreaterThanOrEqual(JAVA_21)
+)]
+pub fn set_direct_0<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    // O_DIRECT not supported in managed VM; return -1 per JVM convention
+    Ok(Some(Value::Int(-1)))
+}
+
+#[intrinsic_method(
+    "sun/nio/ch/UnixFileDispatcherImpl.size0(Ljava/io/FileDescriptor;)J",
+    GreaterThanOrEqual(JAVA_21)
+)]
+pub async fn size_0<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let fd_value = parameters.pop()?;
+    let fd = i64::from(get_fd(&fd_value)?);
+    let vm = thread.vm()?;
+    let size = managed_files::metadata(vm.file_handles(), fd)
+        .await
+        .map_err(|e| JavaError::IoException(format!("size0: {e}")))?
+        .len();
+    Ok(Some(Value::Long(i64::try_from(size)?)))
+}
+
+#[intrinsic_method(
+    "sun/nio/ch/UnixFileDispatcherImpl.truncate0(Ljava/io/FileDescriptor;J)I",
+    GreaterThanOrEqual(JAVA_21)
+)]
+pub async fn truncate_0<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let size = parameters.pop_long()?;
+    let fd_value = parameters.pop()?;
+    let fd = i64::from(get_fd(&fd_value)?);
+    let vm = thread.vm()?;
+    let size =
+        u64::try_from(size).map_err(|_| InternalError("truncate0: negative size".to_string()))?;
+    managed_files::set_len(vm.file_handles(), fd, size)
+        .await
+        .map_err(|e| JavaError::IoException(format!("truncate0: {e}")))?;
+    Ok(Some(Value::Int(0)))
+}
+
+#[intrinsic_method(
+    "sun/nio/ch/UnixFileDispatcherImpl.unmap0(JJ)I",
+    GreaterThanOrEqual(JAVA_21)
+)]
+pub fn unmap_0<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let size = parameters.pop_long()?;
+    let address = parameters.pop_long()?;
+    let vm = thread.vm()?;
+    let regions = vm.resource_manager().get_or_init(MappedRegions::new)?;
+    let length_usize = usize::try_from(size.max(0)).unwrap_or(0);
+    let base = regions
+        .find_containing(address, length_usize)
+        .map_or(address, |(base, _)| {
+            regions.remove(base);
+            base
+        });
+    vm.native_memory().free(base);
+    Ok(Some(Value::Int(0)))
+}
+
+#[intrinsic_method(
+    "sun/nio/ch/UnixFileDispatcherImpl.write0(Ljava/io/FileDescriptor;JI)I",
+    GreaterThanOrEqual(JAVA_21)
+)]
+pub async fn write_0<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let count = parameters.pop_int()?;
+    let address = parameters.pop_long()?;
+    let fd_value = parameters.pop()?;
+    let fd = i64::from(get_fd(&fd_value)?);
+
+    let count = usize::try_from(count)?;
+    let vm = thread.vm()?;
+    let data = vm.native_memory().read_bytes(address, count);
+
+    match managed_files::write(vm.file_handles(), fd, &data).await {
+        Ok(n) => Ok(Some(Value::Int(i32::try_from(n)?))),
+        Err(error) => Ok(Some(Value::Int(i32::try_from(io_status(
+            "UnixFileDispatcherImpl.write0",
+            &error,
+        )?)?))),
+    }
+}
+
+#[intrinsic_method(
+    "sun/nio/ch/UnixFileDispatcherImpl.writev0(Ljava/io/FileDescriptor;JI)J",
+    GreaterThanOrEqual(JAVA_21)
+)]
+pub async fn writev_0<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let count = parameters.pop_int()?;
+    let address = parameters.pop_long()?;
+    let fd_value = parameters.pop()?;
+    let fd = i64::from(get_fd(&fd_value)?);
+
+    let vm = thread.vm()?;
+    let native_memory = vm.native_memory();
+    let file_handles = vm.file_handles();
+    let mut chunks = Vec::new();
+
+    for i in 0..count {
+        let iov_offset = i64::from(i) * 16;
+        let iov_base = native_memory
+            .read_i64(address + iov_offset)
+            .ok_or_else(|| InternalError("writev0: bad iov_base".to_string()))?;
+        let iov_len = native_memory
+            .read_i64(address + iov_offset + 8)
+            .ok_or_else(|| InternalError("writev0: bad iov_len".to_string()))?;
+        let len = usize::try_from(iov_len)?;
+        if len > 0 {
+            chunks.push(native_memory.read_bytes(iov_base, len));
+        }
+    }
+
+    if chunks.is_empty() {
+        return Ok(Some(Value::Long(0)));
+    }
+
+    let n = match managed_files::writev(file_handles, fd, chunks).await {
+        Ok(n) => n,
+        Err(error) => {
+            return Ok(Some(Value::Long(io_status(
+                "UnixFileDispatcherImpl.writev0",
+                &error,
+            )?)));
+        }
+    };
+
+    Ok(Some(Value::Long(i64::try_from(n)?)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_allocation_granularity_0() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = allocation_granularity_0(thread, Parameters::default())
+            .expect("allocation_granularity_0");
+        assert!(matches!(result, Some(Value::Long(size)) if size > 0));
+    }
+
+    #[tokio::test]
+    async fn test_available_0() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = available_0(thread, Parameters::default()).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_close_int_fd() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let params = Parameters::new(vec![Value::Int(-1)]);
+        let result = close_int_fd(thread, params).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_force_0() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = force_0(thread, Parameters::default()).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_is_other_0() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = is_other_0(thread, Parameters::default()).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_lock_0() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = lock_0(thread, Parameters::default()).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_map_0() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = map_0(thread, Parameters::default()).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_pread_0() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = pread_0(thread, Parameters::default()).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_pwrite_0() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = pwrite_0(thread, Parameters::default()).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_read_0() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = read_0(thread, Parameters::default()).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_readv_0() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = readv_0(thread, Parameters::default()).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_release_0() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = release_0(thread, Parameters::default()).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_seek_0() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = seek_0(thread, Parameters::default()).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_set_direct_0() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = set_direct_0(thread, Parameters::default()).expect("set_direct_0");
+        assert_eq!(result, Some(Value::Int(-1)));
+    }
+
+    #[tokio::test]
+    async fn test_size_0() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = size_0(thread, Parameters::default()).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_truncate_0() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = truncate_0(thread, Parameters::default()).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_unmap_0() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = unmap_0(thread, Parameters::default());
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_write_0() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = write_0(thread, Parameters::default()).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_writev_0() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = writev_0(thread, Parameters::default()).await;
+        assert!(result.is_err());
+    }
+}

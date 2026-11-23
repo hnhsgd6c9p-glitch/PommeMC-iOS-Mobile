@@ -19,15 +19,15 @@ pub mod ir;
 pub mod java_subset;
 mod wasm_runtime;
 pub use classfile::{
-    ClassAnalysis, ClassFileError, JarCompatibilityReport, MethodReference, MethodSummary,
-    analyze_class, analyze_jar_classes,
+    ClassAnalysis, ClassFileError, FieldSummary, JarCompatibilityReport, MethodReference,
+    MethodSummary, analyze_class, analyze_jar_classes,
 };
 pub use ir::{
     BasicBlock, BinaryCondition, BlockTerminator, ControlFlowGraph, IrError, IrInstruction,
     LocatedInstruction, MethodIr, UnaryCondition, build_control_flow_graph,
     lower_static_i32_method,
 };
-pub use java_subset::{JavaSubsetError, execute_static_i32};
+pub use java_subset::{JavaSubsetError, execute_static_i32, execute_static_i32_with_fuel};
 pub use wasm_runtime::{WasmModRuntime, WasmRuntimeError};
 
 const FABRIC_MANIFEST: &str = "fabric.mod.json";

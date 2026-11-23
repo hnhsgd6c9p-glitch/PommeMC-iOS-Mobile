@@ -54,7 +54,13 @@ jobs:
       - name: Add iOS target
         run: rustup target add aarch64-apple-ios
       - uses: Swatinem/rust-cache@v2
-      - name: Compile mod package layer for iOS
-        run: cargo check -p pomme-mod --target aarch64-apple-ios --locked
+      - name: Compile the iOS app with Java and native mod features
+        run: cargo check -p pomme-ios --target aarch64-apple-ios --locked
+      - name: Ensure the iOS dependency graph excludes desktop JIT
+        run: |
+          if cargo tree -p pomme-ios --target aarch64-apple-ios -e features | grep -Eiq 'cranelift|ristretto_jit'; then
+            echo "Desktop JIT dependencies leaked into the iOS graph" >&2
+            exit 1
+          fi
       - name: Validate iOS build script syntax
         run: bash -n pomme-ios/build-app.sh

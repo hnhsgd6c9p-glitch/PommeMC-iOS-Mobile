@@ -9,6 +9,9 @@ default = ["singleplayer"]
 # Embeds SteelMC as the integrated server. Off, the world screens still list and
 # edit saves but nothing can open one.
 singleplayer = ["dep:pomme-singleplayer"]
+# Native Rust/WebAssembly mod discovery and lifecycle (experimental).
+native-mods = ["dep:pomme-mod"]
+java-mods = ["dep:pomme-mod", "dep:pomme-jvm"]
 # Loads `ttf` font providers from resource packs through the system FreeType
 # (pkg-config). Off, those providers are skipped.
 ttf-fonts = ["dep:freetype-rs"]
@@ -61,6 +64,8 @@ pomme-dirs = { path = "../pomme-dirs" }
 pomme-protocol = { path = "../pomme-protocol" }
 pomme-install = { path = "../pomme-install" }
 pomme-singleplayer = { path = "../pomme-singleplayer", optional = true }
+pomme-mod = { path = "../pomme-mod", optional = true }
+pomme-jvm = { path = "../pomme-jvm", optional = true, default-features = false }
 winit = { version = "0.30", features = ["rwh_06"] }
 raw-window-handle = "0.6"
 glam = { workspace = true }

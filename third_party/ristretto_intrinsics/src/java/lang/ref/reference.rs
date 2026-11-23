@@ -1,0 +1,236 @@
+use ristretto_classfile::VersionSpecification::GreaterThanOrEqual;
+use ristretto_classfile::{JAVA_11, JAVA_17, JAVA_21};
+use ristretto_classloader::Value;
+use ristretto_gc::Gc;
+use ristretto_macros::intrinsic_method;
+use ristretto_types::Thread;
+use ristretto_types::{Parameters, Result};
+use std::sync::Arc;
+
+#[intrinsic_method("java/lang/ref/Reference.clear0()V", GreaterThanOrEqual(JAVA_17))]
+pub fn clear_0<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let object = parameters.pop()?;
+    let mut object = object.as_object_mut()?;
+    object.set_value("referent", Value::Object(None))?;
+    Ok(None)
+}
+
+// JDK-8352565 was backported to 21.0.13 and 25.0.5; earlier updates lack get0().
+#[intrinsic_method(
+    "java/lang/ref/Reference.get0()Ljava/lang/Object;",
+    GreaterThanOrEqual(JAVA_21)
+)]
+pub fn get_0<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let reference = parameters.pop()?;
+    let reference = reference.as_object_ref()?;
+    Ok(Some(reference.value("referent")?))
+}
+
+#[intrinsic_method(
+    "java/lang/ref/Reference.getAndClearReferencePendingList()Ljava/lang/ref/Reference;",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn get_and_clear_reference_pending_list<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    // TODO: Implement when the pending list is implemented
+    Ok(Some(Value::Object(None)))
+}
+
+#[intrinsic_method(
+    "java/lang/ref/Reference.hasReferencePendingList()Z",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub fn has_reference_pending_list<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    // TODO: Implement when the pending list is implemented
+    Ok(Some(Value::from(false)))
+}
+
+#[intrinsic_method(
+    "java/lang/ref/Reference.refersTo0(Ljava/lang/Object;)Z",
+    GreaterThanOrEqual(JAVA_17)
+)]
+pub fn refers_to_0<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let object_parameter = parameters.pop()?;
+    let reference = parameters.pop()?;
+    let reference = reference.as_object_ref()?;
+    let object = reference.value("referent")?;
+    let refers_to = match (&object, &object_parameter) {
+        (Value::Object(Some(a)), Value::Object(Some(b))) => Gc::ptr_eq(a, b),
+        (Value::Object(None), Value::Object(None)) => true,
+        _ => false,
+    };
+    Ok(Some(Value::from(refers_to)))
+}
+
+#[intrinsic_method(
+    "java/lang/ref/Reference.waitForReferencePendingList()V",
+    GreaterThanOrEqual(JAVA_11)
+)]
+pub async fn wait_for_reference_pending_list<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    // The collector does not expose a pending-reference queue yet, so there is no event that can
+    // make this wait complete. Remaining asynchronously pending keeps the JDK Reference Handler
+    // from busy-spinning while still allowing its Tokio task to be cancelled during VM shutdown.
+    std::future::pending::<()>().await;
+    Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ristretto_types::JavaObject;
+
+    #[tokio::test]
+    async fn test_get_0_preserves_identity_and_observes_clear() -> Result<()> {
+        let (vm, thread) = crate::test::java25_thread().await?;
+        let value = "referent".to_object(&thread).await?;
+        let reference = vm
+            .object(
+                "java/lang/ref/WeakReference",
+                "Ljava/lang/Object;",
+                std::slice::from_ref(&value),
+            )
+            .await?;
+        let result = get_0(thread.clone(), Parameters::new(vec![reference.clone()]))?;
+        assert!(matches!(
+            (&result, &value),
+            (Some(Value::Object(Some(actual))), Value::Object(Some(expected)))
+                if Gc::ptr_eq(actual, expected)
+        ));
+        clear_0(thread.clone(), Parameters::new(vec![reference.clone()]))?;
+        assert_eq!(
+            get_0(thread, Parameters::new(vec![reference]))?,
+            Some(Value::Object(None))
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_clear_0() -> Result<()> {
+        let (vm, thread) = crate::test::thread().await.expect("thread");
+        let value = "foo".to_object(&thread).await?;
+        let weak_reference = vm
+            .object(
+                "java/lang/ref/WeakReference",
+                "Ljava/lang/Object;",
+                &[value],
+            )
+            .await?;
+        let mut parameters = Parameters::default();
+        parameters.push(weak_reference.clone());
+
+        let result = clear_0(thread, parameters)?;
+        assert_eq!(result, None);
+        let weak_reference = weak_reference.as_object_ref()?;
+        let referent = weak_reference.value("referent")?;
+        assert_eq!(referent, Value::Object(None));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_and_clear_reference_pending_list() -> Result<()> {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = get_and_clear_reference_pending_list(thread, Parameters::default())?
+            .expect("pending list");
+        assert_eq!(result, Value::Object(None));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_has_reference_pending_list() -> Result<()> {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let value =
+            has_reference_pending_list(thread, Parameters::default())?.expect("has pending list");
+        let has_pending_list = value.as_bool()?;
+        assert!(!has_pending_list);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_refers_to_0() -> Result<()> {
+        let (vm, thread) = crate::test::thread().await.expect("thread");
+        let value = "foo".to_object(&thread).await?;
+        let weak_reference = vm
+            .object(
+                "java/lang/ref/WeakReference",
+                "Ljava/lang/Object;",
+                std::slice::from_ref(&value),
+            )
+            .await?;
+        let mut parameters = Parameters::default();
+        parameters.push(weak_reference.clone());
+        parameters.push(value);
+        let value = refers_to_0(thread, parameters)?.expect("refers to");
+        let refers_to = value.as_bool()?;
+        assert!(refers_to);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_refers_to_0_uses_identity() -> Result<()> {
+        let (vm, thread) = crate::test::java25_thread().await?;
+        let class = thread.class("java/lang/Object").await?;
+        let referent = Value::from_object(
+            vm.garbage_collector(),
+            ristretto_classloader::Object::new(class.clone())?,
+        );
+        let distinct = Value::from_object(
+            vm.garbage_collector(),
+            ristretto_classloader::Object::new(class)?,
+        );
+        assert_eq!(referent, distinct);
+        let reference = vm
+            .object(
+                "java/lang/ref/WeakReference",
+                "Ljava/lang/Object;",
+                std::slice::from_ref(&referent),
+            )
+            .await?;
+        for (candidate, expected) in [
+            (distinct, false),
+            (referent, true),
+            (Value::Object(None), false),
+        ] {
+            let parameters = Parameters::new(vec![reference.clone(), candidate]);
+            assert_eq!(
+                refers_to_0(thread.clone(), parameters)?,
+                Some(Value::from(expected))
+            );
+        }
+        clear_0(thread.clone(), Parameters::new(vec![reference.clone()]))?;
+        let parameters = Parameters::new(vec![reference, Value::Object(None)]);
+        assert_eq!(refers_to_0(thread, parameters)?, Some(Value::from(true)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_reference_pending_list() -> Result<()> {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(10),
+            wait_for_reference_pending_list(thread, Parameters::default()),
+        )
+        .await;
+        assert!(
+            result.is_err(),
+            "pending-list wait must block when the list is empty"
+        );
+        Ok(())
+    }
+}

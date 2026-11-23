@@ -1,0 +1,112 @@
+use ristretto_classfile::JAVA_8;
+use ristretto_classfile::VersionSpecification::LessThanOrEqual;
+use ristretto_classloader::Value;
+use ristretto_macros::intrinsic_method;
+use ristretto_types::Frame;
+use ristretto_types::JavaObject;
+use ristretto_types::Thread;
+use ristretto_types::{Parameters, Result};
+use std::sync::Arc;
+
+#[intrinsic_method(
+    "sun/reflect/Reflection.getCallerClass()Ljava/lang/Class;",
+    LessThanOrEqual(JAVA_8)
+)]
+pub async fn get_caller_class_1<T: Thread + 'static>(
+    thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    let frames = thread.frames().await?;
+    if frames.len() < 2 {
+        return Ok(Some(Value::Object(None)));
+    }
+    // current frame = len - 1, caller = len - 2, etc.
+    let Some(caller_frame) = frames.get(frames.len() - 2) else {
+        return Ok(Some(Value::Object(None)));
+    };
+    let class = caller_frame.class();
+    let class_object = class.to_object(&thread).await?;
+    Ok(Some(class_object))
+}
+
+#[intrinsic_method(
+    "sun/reflect/Reflection.getCallerClass(I)Ljava/lang/Class;",
+    LessThanOrEqual(JAVA_8)
+)]
+pub async fn get_caller_class_2<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let depth = usize::try_from(parameters.pop_int()?)?;
+    let frames = thread.frames().await?;
+    if frames.len() <= depth {
+        return Ok(Some(Value::Object(None)));
+    }
+    // The frame at index (frames.len() - 1; depth) is the target
+    // current frame = len - 1, caller = len - 2, etc.
+    let Some(index) = depth
+        .checked_add(1)
+        .and_then(|depth| frames.len().checked_sub(depth))
+    else {
+        return Ok(Some(Value::Object(None)));
+    };
+    let Some(frame) = frames.get(index) else {
+        return Ok(Some(Value::Object(None)));
+    };
+    let class = frame.class();
+    let class_object = class.to_object(&thread).await?;
+    Ok(Some(class_object))
+}
+
+#[intrinsic_method(
+    "sun/reflect/Reflection.getClassAccessFlags(Ljava/lang/Class;)I",
+    LessThanOrEqual(JAVA_8)
+)]
+pub async fn get_class_access_flags<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let object = parameters.pop()?;
+    let class = crate::java::lang::class::get_class_no_init(&*thread, &object).await?;
+    let class_file = class.class_file();
+    let access_flags = &class_file.access_flags;
+    #[expect(clippy::cast_lossless)]
+    let class_access_flags = access_flags.bits() as i32;
+    Ok(Some(Value::Int(class_access_flags)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_get_caller_class_1_null() -> Result<()> {
+        let (_vm, thread) = crate::test::java8_thread().await.expect("thread");
+        let parameters = Parameters::default();
+        let result = get_caller_class_1(thread, parameters).await?;
+        assert_eq!(result, Some(Value::Object(None)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_caller_class_2() -> Result<()> {
+        let (_vm, thread) = crate::test::java8_thread().await.expect("thread");
+        let mut parameters = Parameters::default();
+        parameters.push_int(42); // Depth parameter
+        let result = get_caller_class_2(thread, parameters).await?;
+        assert_eq!(result, Some(Value::Object(None)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_class_access_flags() -> Result<()> {
+        let (_vm, thread) = crate::test::java8_thread().await?;
+        let class = thread.class("java.lang.String").await?;
+        let class_object = class.to_object(&thread).await?;
+        let parameters = Parameters::new(vec![class_object]);
+        let result = get_class_access_flags(thread, parameters).await?;
+        let access_flags = result.expect("access_flags").as_i32()?;
+        assert_eq!(access_flags, 49);
+        Ok(())
+    }
+}

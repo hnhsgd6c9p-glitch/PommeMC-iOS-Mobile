@@ -1,0 +1,720 @@
+use crate::bounds;
+use flate2::{Decompress, FlushDecompress};
+use portable_atomic::AtomicI64;
+use ristretto_classfile::JAVA_8;
+use ristretto_classfile::VersionSpecification::{Any, GreaterThan, LessThanOrEqual};
+use ristretto_classloader::Value;
+use ristretto_gc::sync::RwLock;
+use ristretto_macros::intrinsic_method;
+use ristretto_types::Thread;
+use ristretto_types::{Parameters, Result, VM};
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::atomic::Ordering;
+
+/// Inflater context containing the decompressor and its mode
+struct InflaterContext {
+    decompress: Decompress,
+    zlib_header: bool, // true = expects zlib header, false = raw deflate
+    needs_dict: bool,  // true = currently waiting for dictionary to be set
+}
+
+/// Per-VM storage for Inflater (decompression) contexts.
+struct InflaterState {
+    handles: RwLock<HashMap<i64, InflaterContext>>,
+    next_id: AtomicI64,
+}
+
+fn checked_array_end(offset: usize, len: usize, array_len: usize) -> Result<usize> {
+    let end = offset.checked_add(len).ok_or(
+        ristretto_types::JavaError::ArrayIndexOutOfBoundsException {
+            index: i32::MAX,
+            length: array_len,
+        },
+    )?;
+    if offset > array_len || end > array_len {
+        return Err(ristretto_types::JavaError::ArrayIndexOutOfBoundsException {
+            index: i32::try_from(end).unwrap_or(i32::MAX),
+            length: array_len,
+        }
+        .into());
+    }
+    Ok(end)
+}
+
+fn copy_output_bytes(
+    output_bytes: &mut [i8],
+    offset: usize,
+    output_buffer: &[u8],
+    bytes_written: usize,
+) -> Result<()> {
+    let output_end = checked_array_end(offset, bytes_written, output_bytes.len())?;
+    let output = bounds::range_mut(output_bytes, offset..output_end, "Inflater output")?;
+    let source = bounds::range_to(output_buffer, ..bytes_written, "Inflater output buffer")?;
+    for (slot, byte) in output.iter_mut().zip(source) {
+        *slot = i8::from_ne_bytes(byte.to_ne_bytes());
+    }
+    Ok(())
+}
+
+impl InflaterState {
+    fn new() -> Self {
+        Self {
+            handles: RwLock::new(HashMap::new()),
+            next_id: AtomicI64::new(1),
+        }
+    }
+}
+
+fn get_inflater_state<T: Thread + 'static>(thread: &Arc<T>) -> Result<Arc<InflaterState>> {
+    let vm = thread.vm()?;
+    vm.resource_manager().get_or_init(InflaterState::new)
+}
+
+#[intrinsic_method("java/util/zip/Inflater.end(J)V", Any)]
+pub fn end<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let handle = parameters.pop_long()?;
+    let state = get_inflater_state(&thread)?;
+    let mut guard = state.handles.write();
+    guard.remove(&handle);
+    Ok(None)
+}
+
+#[intrinsic_method("java/util/zip/Inflater.getAdler(J)I", Any)]
+pub fn get_adler<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    // Return 1 as default Adler32 value (no data)
+    Ok(Some(Value::Int(1)))
+}
+
+#[intrinsic_method(
+    "java/util/zip/Inflater.inflateBufferBuffer(JJIJI)J",
+    GreaterThan(JAVA_8)
+)]
+pub fn inflate_buffer_buffer<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Ok(Some(Value::Long(0)))
+}
+
+#[intrinsic_method(
+    "java/util/zip/Inflater.inflateBufferBytes(JJI[BII)J",
+    GreaterThan(JAVA_8)
+)]
+pub fn inflate_buffer_bytes<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Ok(Some(Value::Long(0)))
+}
+
+#[intrinsic_method(
+    "java/util/zip/Inflater.inflateBytesBuffer(J[BIIJI)J",
+    GreaterThan(JAVA_8)
+)]
+pub fn inflate_bytes_buffer<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Ok(Some(Value::Long(0)))
+}
+
+#[intrinsic_method("java/util/zip/Inflater.inflateBytes(J[BII)I", LessThanOrEqual(JAVA_8))]
+pub fn inflate_bytes<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let len = parameters.pop_int()?;
+    let off = parameters.pop_int()?;
+    let output_ref = parameters.pop_reference()?;
+    let handle = parameters.pop_long()?;
+    let inflater = parameters.pop()?;
+
+    let Some(output_ref) = output_ref else {
+        return Err(ristretto_types::JavaError::NullPointerException(Some(
+            "output array is null".to_string(),
+        ))
+        .into());
+    };
+
+    if len <= 0 {
+        return Ok(Some(Value::Int(0)));
+    }
+
+    #[expect(clippy::cast_sign_loss)]
+    let off = off as usize;
+    #[expect(clippy::cast_sign_loss)]
+    let len = len as usize;
+
+    let (input_ref, input_off, input_len) = {
+        let inflater = inflater.as_object_ref()?;
+        (
+            inflater.value("buf")?,
+            usize::try_from(inflater.value("off")?.as_i32()?)?,
+            usize::try_from(inflater.value("len")?.as_i32()?)?,
+        )
+    };
+    let input_bytes = if input_ref.is_null() || input_len == 0 {
+        Vec::new()
+    } else {
+        let input = input_ref.as_byte_vec_ref()?;
+        let input_end = checked_array_end(input_off, input_len, input.len())?;
+        bounds::range(&input, input_off..input_end, "Inflater input")?
+            .iter()
+            .map(|byte| byte.to_ne_bytes()[0])
+            .collect::<Vec<_>>()
+    };
+
+    let state = get_inflater_state(&thread)?;
+    let mut guard = state.handles.write();
+    let Some(context) = guard.get_mut(&handle) else {
+        return Err(ristretto_types::JavaError::RuntimeException(
+            "Inflater has been closed".to_string(),
+        )
+        .into());
+    };
+
+    let mut output_buffer = vec![0u8; len];
+    let before_in = context.decompress.total_in();
+    let before_out = context.decompress.total_out();
+    let result =
+        context
+            .decompress
+            .decompress(&input_bytes, &mut output_buffer, FlushDecompress::None);
+    let (status, need_dict) = match result {
+        Ok(status) => (Some(status), false),
+        Err(error) => {
+            if error.needs_dictionary().is_some() {
+                context.needs_dict = true;
+                (None, true)
+            } else {
+                return Err(ristretto_types::Error::InternalError(format!(
+                    "Decompression error: {error}"
+                )));
+            }
+        }
+    };
+
+    #[expect(clippy::cast_possible_truncation)]
+    let bytes_read = (context.decompress.total_in() - before_in) as usize;
+    #[expect(clippy::cast_possible_truncation)]
+    let bytes_written = (context.decompress.total_out() - before_out) as usize;
+    let finished = matches!(status, Some(flate2::Status::StreamEnd));
+
+    // Copy output to array
+    if bytes_written > 0 {
+        let mut guard = output_ref.write();
+        let output_bytes = guard.as_byte_vec_mut()?;
+        copy_output_bytes(output_bytes, off, &output_buffer, bytes_written)?;
+    }
+
+    {
+        let mut inflater = inflater.as_object_mut()?;
+        let next_input_off = input_off.checked_add(bytes_read).ok_or_else(|| {
+            ristretto_types::Error::InternalError("Inflater input offset overflow".to_string())
+        })?;
+        let remaining = input_len.checked_sub(bytes_read).ok_or_else(|| {
+            ristretto_types::Error::InternalError(
+                "Inflater consumed more bytes than were available".to_string(),
+            )
+        })?;
+        inflater.set_value("off", Value::Int(i32::try_from(next_input_off)?))?;
+        inflater.set_value("len", Value::Int(i32::try_from(remaining)?))?;
+        inflater.set_value("finished", Value::from(finished))?;
+        inflater.set_value("needDict", Value::from(need_dict))?;
+    }
+
+    #[expect(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+    Ok(Some(Value::Int(bytes_written as i32)))
+}
+
+#[intrinsic_method(
+    "java/util/zip/Inflater.inflateBytesBytes(J[BII[BII)J",
+    GreaterThan(JAVA_8)
+)]
+#[expect(clippy::too_many_lines)]
+pub fn inflate_bytes_bytes<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let output_len_i32 = parameters.pop_int()?;
+    let output_off_i32 = parameters.pop_int()?;
+    let output_ref = parameters.pop_reference()?;
+    let input_len_i32 = parameters.pop_int()?;
+    let input_off_i32 = parameters.pop_int()?;
+    let input_ref = parameters.pop_reference()?;
+    let handle = parameters.pop_long()?;
+
+    // Convert with proper bounds checking
+    #[expect(clippy::cast_sign_loss)]
+    let output_len = if output_len_i32 >= 0 {
+        output_len_i32 as usize
+    } else {
+        0
+    };
+    #[expect(clippy::cast_sign_loss)]
+    let output_off = if output_off_i32 >= 0 {
+        output_off_i32 as usize
+    } else {
+        0
+    };
+    #[expect(clippy::cast_sign_loss)]
+    let input_len = if input_len_i32 >= 0 {
+        input_len_i32 as usize
+    } else {
+        0
+    };
+    #[expect(clippy::cast_sign_loss)]
+    let input_off = if input_off_i32 >= 0 {
+        input_off_i32 as usize
+    } else {
+        0
+    };
+
+    // Get input bytes; convert from i8 to u8
+    let input_bytes: Vec<u8> = {
+        let Some(input_ref) = input_ref else {
+            return Err(ristretto_types::JavaError::NullPointerException(Some(
+                "input array is null".to_string(),
+            ))
+            .into());
+        };
+        let guard = input_ref.read();
+        let bytes = guard.as_byte_vec_ref()?;
+        // If input_len is 0, return empty vec (no data to process)
+        if input_len == 0 {
+            Vec::new()
+        } else {
+            let input_end = checked_array_end(input_off, input_len, bytes.len())?;
+            bounds::range(bytes, input_off..input_end, "Inflater input")?
+                .iter()
+                .map(|b| {
+                    #[expect(clippy::cast_sign_loss)]
+                    let v = *b as u8;
+                    v
+                })
+                .collect()
+        }
+    };
+
+    // Get the inflater
+    let state = get_inflater_state(&thread)?;
+    let mut guard = state.handles.write();
+    let Some(context) = guard.get_mut(&handle) else {
+        return Err(ristretto_types::JavaError::RuntimeException(
+            "Inflater has been closed".to_string(),
+        )
+        .into());
+    };
+
+    // Decompress
+    let mut output_buffer = vec![0u8; output_len];
+    let before_in = context.decompress.total_in();
+    let before_out = context.decompress.total_out();
+    let result =
+        context
+            .decompress
+            .decompress(&input_bytes, &mut output_buffer, FlushDecompress::None);
+
+    let (status, need_dict) = match result {
+        Ok(status) => (Some(status), false),
+        Err(error) => {
+            // Check if this is a "needs dictionary" error
+            if error.needs_dictionary().is_some() {
+                context.needs_dict = true;
+                (None, true)
+            } else {
+                return Err(ristretto_types::Error::InternalError(format!(
+                    "Decompression error: {error}"
+                )));
+            }
+        }
+    };
+
+    #[expect(clippy::cast_possible_wrap)]
+    let bytes_read = (context.decompress.total_in() - before_in) as i64;
+    #[expect(clippy::cast_possible_wrap)]
+    let bytes_written = (context.decompress.total_out() - before_out) as i64;
+
+    // Check if finished (stream end)
+    let finished = matches!(status, Some(flate2::Status::StreamEnd));
+
+    // Copy output to array
+    if bytes_written > 0 {
+        let Some(output_ref) = output_ref else {
+            return Err(ristretto_types::JavaError::NullPointerException(Some(
+                "output array is null".to_string(),
+            ))
+            .into());
+        };
+        let mut guard = output_ref.write();
+        let output_bytes = guard.as_byte_vec_mut()?;
+        #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let bytes_written = bytes_written as usize;
+        copy_output_bytes(output_bytes, output_off, &output_buffer, bytes_written)?;
+    }
+
+    // Return packed value according to JDK spec:
+    // bits 0-30: bytes read (31 bits)
+    // bits 31-61: bytes written (31 bits)
+    // bit 62: finished flag
+    // bit 63: needDict flag
+    let mut result: i64 = (bytes_read & 0x7fff_ffff) | ((bytes_written & 0x7fff_ffff) << 31);
+    if finished {
+        result |= 1i64 << 62;
+    }
+    if need_dict {
+        result |= 1i64 << 63;
+    }
+    Ok(Some(Value::Long(result)))
+}
+
+#[intrinsic_method("java/util/zip/Inflater.init(Z)J", Any)]
+pub fn init<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let nowrap = parameters.pop_int()? != 0;
+
+    // Create a new decompression context
+    // nowrap=true means raw deflate (no zlib header)
+    // nowrap=false means zlib format (with header)
+    let zlib_header = !nowrap;
+    let decompress = Decompress::new(zlib_header);
+    let context = InflaterContext {
+        decompress,
+        zlib_header,
+        needs_dict: false,
+    };
+
+    // Store and return handle
+    let state = get_inflater_state(&thread)?;
+    let handle = state.next_id.fetch_add(1, Ordering::SeqCst);
+    let mut guard = state.handles.write();
+    guard.insert(handle, context);
+
+    Ok(Some(Value::Long(handle)))
+}
+
+#[intrinsic_method("java/util/zip/Inflater.initIDs()V", Any)]
+pub fn init_ids<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Ok(None)
+}
+
+#[intrinsic_method("java/util/zip/Inflater.reset(J)V", Any)]
+pub fn reset<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let handle = parameters.pop_long()?;
+
+    let state = get_inflater_state(&thread)?;
+    let mut guard = state.handles.write();
+    let Some(context) = guard.get_mut(&handle) else {
+        return Err(ristretto_types::JavaError::RuntimeException(
+            "Inflater has been closed".to_string(),
+        )
+        .into());
+    };
+
+    context.decompress.reset(context.zlib_header);
+    Ok(None)
+}
+
+#[intrinsic_method("java/util/zip/Inflater.setDictionary(J[BII)V", Any)]
+pub fn set_dictionary<T: Thread + 'static>(
+    thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let len = parameters.pop_int()?;
+    let off = parameters.pop_int()?;
+    let dict_ref = parameters.pop_reference()?;
+    let handle = parameters.pop_long()?;
+
+    #[expect(clippy::cast_sign_loss)]
+    let off = if off >= 0 { off as usize } else { 0 };
+    #[expect(clippy::cast_sign_loss)]
+    let len = if len >= 0 { len as usize } else { 0 };
+
+    // Get dictionary bytes
+    let dict_bytes: Vec<u8> = {
+        let Some(dict_ref) = dict_ref else {
+            return Err(ristretto_types::JavaError::NullPointerException(Some(
+                "dictionary array is null".to_string(),
+            ))
+            .into());
+        };
+        let guard = dict_ref.read();
+        let bytes = guard.as_byte_vec_ref()?;
+        if len == 0 {
+            Vec::new()
+        } else {
+            let end = checked_array_end(off, len, bytes.len())?;
+            bounds::range(bytes, off..end, "Inflater dictionary")?
+                .iter()
+                .map(|b| {
+                    #[expect(clippy::cast_sign_loss)]
+                    let v = *b as u8;
+                    v
+                })
+                .collect()
+        }
+    };
+
+    // Set dictionary on the decompressor
+    let state = get_inflater_state(&thread)?;
+    let mut guard = state.handles.write();
+    let Some(context) = guard.get_mut(&handle) else {
+        return Err(ristretto_types::JavaError::RuntimeException(
+            "Inflater has been closed".to_string(),
+        )
+        .into());
+    };
+
+    // Set the dictionary; this may fail if the stream hasn't requested a dictionary yet.
+    // We ignore errors here since the Java API doesn't throw on setDictionary.
+    // The dictionary will be used when the stream actually needs it.
+    let _ = context.decompress.set_dictionary(&dict_bytes);
+    context.needs_dict = false;
+
+    Ok(None)
+}
+
+#[intrinsic_method(
+    "java/util/zip/Inflater.setDictionaryBuffer(JJI)V",
+    GreaterThan(JAVA_8)
+)]
+pub fn set_dictionary_buffer<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    // Dictionary support is complex; for now just ignore it
+    Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use flate2::{Compress, Compression, FlushCompress, Status};
+    use ristretto_classloader::{Object, Reference};
+
+    #[tokio::test]
+    async fn test_init_and_end() -> Result<()> {
+        let (_vm, thread) = crate::test::thread().await?;
+        // Test init with nowrap = false
+        let mut parameters = Parameters::default();
+        parameters.push_int(0); // nowrap = false
+        let result = init(thread.clone(), parameters)?;
+        let handle = result.expect("handle").as_i64()?;
+        assert!(handle > 0);
+
+        // Test end
+        let mut parameters = Parameters::default();
+        parameters.push_long(handle);
+        let result = end(thread, parameters)?;
+        assert!(result.is_none());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_adler() -> Result<()> {
+        let (_vm, thread) = crate::test::thread().await?;
+        let mut parameters = Parameters::default();
+        parameters.push_long(1); // dummy handle
+        let result = get_adler(thread, parameters)?;
+        assert_eq!(Some(Value::Int(1)), result);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_inflate_buffer_buffer() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result =
+            inflate_buffer_buffer(thread, Parameters::default()).expect("inflate_buffer_buffer");
+        // Returns 0 (no progress) since direct buffer operations not implemented
+        assert_eq!(Some(Value::Long(0)), result);
+    }
+
+    #[tokio::test]
+    async fn test_inflate_buffer_bytes() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result =
+            inflate_buffer_bytes(thread, Parameters::default()).expect("inflate_buffer_bytes");
+        // Returns 0 (no progress) since direct buffer operations not implemented
+        assert_eq!(Some(Value::Long(0)), result);
+    }
+
+    #[tokio::test]
+    async fn test_inflate_bytes_buffer() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result =
+            inflate_bytes_buffer(thread, Parameters::default()).expect("inflate_bytes_buffer");
+        // Returns 0 (no progress) since direct buffer operations not implemented
+        assert_eq!(Some(Value::Long(0)), result);
+    }
+
+    #[tokio::test]
+    async fn test_inflate_bytes() -> Result<()> {
+        let (_vm, thread) = crate::test::java8_thread().await?;
+
+        // Create an inflater
+        let mut parameters = Parameters::default();
+        parameters.push_int(1); // nowrap = true (raw DEFLATE, as used by ZIP entries)
+        let result = init(thread.clone(), parameters)?;
+        let handle = result.expect("handle").as_i64()?;
+
+        let expected = b"Hello, World!";
+        let mut compressor = Compress::new(Compression::default(), false);
+        let mut compressed = vec![0_u8; 100];
+        let status = compressor
+            .compress(expected, &mut compressed, FlushCompress::Finish)
+            .expect("compress test input");
+        assert_eq!(Status::StreamEnd, status);
+        compressed.truncate(usize::try_from(compressor.total_out())?);
+
+        let vm = thread.vm()?;
+        let gc = vm.garbage_collector();
+        let compressed_len = compressed.len();
+        let compressed = compressed
+            .into_iter()
+            .map(u8::cast_signed)
+            .collect::<Vec<_>>();
+        let compressed = Value::new_object(gc, Reference::from(compressed));
+
+        let mut inflater_object = Object::new(thread.class("java/util/zip/Inflater").await?)?;
+        inflater_object.set_value("buf", compressed)?;
+        inflater_object.set_value("off", Value::Int(0))?;
+        inflater_object.set_value("len", Value::Int(i32::try_from(compressed_len)?))?;
+        let inflater = Value::new_object(gc, Reference::Object(inflater_object));
+
+        // Create output array
+        let output_bytes: Vec<i8> = vec![0i8; 100];
+        let output = Value::new_object(gc, Reference::from(output_bytes));
+
+        let mut parameters = Parameters::default();
+        parameters.push(inflater.clone());
+        parameters.push_long(handle);
+        parameters.push(output.clone());
+        parameters.push_int(0); // offset
+        parameters.push_int(100); // length
+
+        let result = inflate_bytes(thread.clone(), parameters)?;
+        let bytes_written = result.expect("bytes_written").as_i32()?;
+        assert_eq!(i32::try_from(expected.len())?, bytes_written);
+        let output = output.as_byte_vec_ref()?;
+        let actual = output
+            .iter()
+            .take(expected.len())
+            .map(|byte| byte.cast_unsigned())
+            .collect::<Vec<_>>();
+        assert_eq!(expected, actual.as_slice());
+
+        let inflater = inflater.as_object_ref()?;
+        assert_eq!(
+            Value::Int(i32::try_from(compressed_len)?),
+            inflater.value("off")?
+        );
+        assert_eq!(Value::Int(0), inflater.value("len")?);
+        assert_eq!(Value::from(true), inflater.value("finished")?);
+        assert_eq!(Value::from(false), inflater.value("needDict")?);
+
+        // Cleanup
+        let mut parameters = Parameters::default();
+        parameters.push_long(handle);
+        end(thread, parameters)?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_init_ids() -> Result<()> {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = init_ids(thread, Parameters::default())?;
+        assert_eq!(None, result);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_reset() -> Result<()> {
+        let (_vm, thread) = crate::test::thread().await?;
+        // First create an inflater
+        let mut parameters = Parameters::default();
+        parameters.push_int(0); // nowrap = false
+        let result = init(thread.clone(), parameters)?;
+        let handle = result.expect("handle").as_i64()?;
+
+        // Test reset
+        let mut parameters = Parameters::default();
+        parameters.push_long(handle);
+        let result = reset(thread.clone(), parameters)?;
+        assert!(result.is_none());
+
+        // Cleanup
+        let mut parameters = Parameters::default();
+        parameters.push_long(handle);
+        end(thread, parameters)?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_set_dictionary() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        // First create a valid inflater
+        let mut init_params = Parameters::default();
+        init_params.push_int(0); // nowrap = false
+        let result = init(thread.clone(), init_params).expect("init");
+        let handle = result.expect("handle").as_i64().expect("handle value");
+
+        // Create dictionary array
+        let dict_bytes: Vec<i8> = b"dictionary".iter().map(|b| (*b).cast_signed()).collect();
+        let dict_ref = Reference::from(dict_bytes);
+        let vm = thread.vm().expect("vm");
+        let gc = vm.garbage_collector();
+        let dict_value = Value::new_object(gc, dict_ref);
+        let Value::Object(dict_wrapped) = dict_value else {
+            panic!("expected object");
+        };
+
+        let mut parameters = Parameters::default();
+        parameters.push_long(handle);
+        parameters.push_reference(dict_wrapped);
+        parameters.push_int(0); // offset
+        parameters.push_int(10); // length
+
+        let result = set_dictionary(thread.clone(), parameters).expect("set_dictionary");
+        assert!(result.is_none());
+
+        // Cleanup
+        let mut end_params = Parameters::default();
+        end_params.push_long(handle);
+        end(thread, end_params).expect("end");
+    }
+
+    #[tokio::test]
+    async fn test_set_dictionary_null_array() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let mut parameters = Parameters::default();
+        parameters.push_long(1); // handle
+        parameters.push(Value::Object(None)); // null dict array
+        parameters.push_int(0); // offset
+        parameters.push_int(0); // length
+        let result = set_dictionary(thread, parameters);
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_set_dictionary_buffer() -> Result<()> {
+        let (_vm, thread) = crate::test::thread().await?;
+        let result = set_dictionary_buffer(thread, Parameters::default())?;
+        assert!(result.is_none());
+        Ok(())
+    }
+}

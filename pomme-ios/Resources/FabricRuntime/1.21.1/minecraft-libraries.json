@@ -1,0 +1,266 @@
+[
+  {
+    "coordinate": "com.mojang:authlib:6.0.54",
+    "file": "authlib-6.0.54.jar",
+    "sha1": "de8bc95660e1b2fe8793fd427a7a10dcec5b3ea7",
+    "size": 115242
+  },
+  {
+    "coordinate": "com.mojang:blocklist:1.0.10",
+    "file": "blocklist-1.0.10.jar",
+    "sha1": "5c685c5ffa94c4cd39496c7184c1d122e515ecef",
+    "size": 964
+  },
+  {
+    "coordinate": "com.mojang:brigadier:1.3.10",
+    "file": "brigadier-1.3.10.jar",
+    "sha1": "d15b53a14cf20fdcaa98f731af5dda654452c010",
+    "size": 80082
+  },
+  {
+    "coordinate": "commons-codec:commons-codec:1.16.0",
+    "file": "commons-codec-1.16.0.jar",
+    "sha1": "4e3eb3d79888d76b54e28b350915b5dc3919c9de",
+    "size": 360738
+  },
+  {
+    "coordinate": "org.apache.commons:commons-compress:1.26.0",
+    "file": "commons-compress-1.26.0.jar",
+    "sha1": "659feffdd12280201c8aacb8f7be94f9a883c824",
+    "size": 1078328
+  },
+  {
+    "coordinate": "commons-io:commons-io:2.15.1",
+    "file": "commons-io-2.15.1.jar",
+    "sha1": "f11560da189ab563a5c8e351941415430e9304ea",
+    "size": 501218
+  },
+  {
+    "coordinate": "org.apache.commons:commons-lang3:3.14.0",
+    "file": "commons-lang3-3.14.0.jar",
+    "sha1": "1ed471194b02f2c6cb734a0cd6f6f107c673afae",
+    "size": 657952
+  },
+  {
+    "coordinate": "commons-logging:commons-logging:1.2",
+    "file": "commons-logging-1.2.jar",
+    "sha1": "4bfc12adfe4842bf07b657f0369c4cb522955686",
+    "size": 61829
+  },
+  {
+    "coordinate": "com.mojang:datafixerupper:8.0.16",
+    "file": "datafixerupper-8.0.16.jar",
+    "sha1": "67d4de6d7f95d89bcf5862995fb854ebaec02a34",
+    "size": 724313
+  },
+  {
+    "coordinate": "com.google.guava:failureaccess:1.0.1",
+    "file": "failureaccess-1.0.1.jar",
+    "sha1": "1dcf1de382a0bf95a3d8b0849546c88bac1292c9",
+    "size": 4617
+  },
+  {
+    "coordinate": "it.unimi.dsi:fastutil:8.5.12",
+    "file": "fastutil-8.5.12.jar",
+    "sha1": "c24946d46824bd528054bface3231d2ecb7e95e8",
+    "size": 23326598
+  },
+  {
+    "coordinate": "com.google.code.gson:gson:2.10.1",
+    "file": "gson-2.10.1.jar",
+    "sha1": "b3add478d4382b78ea20b1671390a858002feb6c",
+    "size": 283367
+  },
+  {
+    "coordinate": "com.google.guava:guava:32.1.2-jre",
+    "file": "guava-32.1.2-jre.jar",
+    "sha1": "5e64ec7e056456bef3a4bc4c6fdaef71e8ab6318",
+    "size": 3041591
+  },
+  {
+    "coordinate": "org.apache.httpcomponents:httpclient:4.5.13",
+    "file": "httpclient-4.5.13.jar",
+    "sha1": "e5f6cae5ca7ecaac1ec2827a9e2d65ae2869cada",
+    "size": 780321
+  },
+  {
+    "coordinate": "org.apache.httpcomponents:httpcore:4.4.16",
+    "file": "httpcore-4.4.16.jar",
+    "sha1": "51cf043c87253c9f58b539c9f7e44c8894223850",
+    "size": 327891
+  },
+  {
+    "coordinate": "com.ibm.icu:icu4j:73.2",
+    "file": "icu4j-73.2.jar",
+    "sha1": "61ad4ef7f9131fcf6d25c34b817f90d6da06c9e9",
+    "size": 14567819
+  },
+  {
+    "coordinate": "ca.weblite:java-objc-bridge:1.1",
+    "file": "java-objc-bridge-1.1.jar",
+    "sha1": "1227f9e0666314f9de41477e3ec277e542ed7f7b",
+    "size": 1330045
+  },
+  {
+    "coordinate": "net.java.dev.jna:jna:5.14.0",
+    "file": "jna-5.14.0.jar",
+    "sha1": "67bf3eaea4f0718cb376a181a629e5f88fa1c9dd",
+    "size": 1878533
+  },
+  {
+    "coordinate": "net.java.dev.jna:jna-platform:5.14.0",
+    "file": "jna-platform-5.14.0.jar",
+    "sha1": "28934d48aed814f11e4c584da55c49fa7032b31b",
+    "size": 1369287
+  },
+  {
+    "coordinate": "org.joml:joml:1.10.5",
+    "file": "joml-1.10.5.jar",
+    "sha1": "22566d58af70ad3d72308bab63b8339906deb649",
+    "size": 712082
+  },
+  {
+    "coordinate": "net.sf.jopt-simple:jopt-simple:5.0.4",
+    "file": "jopt-simple-5.0.4.jar",
+    "sha1": "4fdac2fbe92dfad86aa6e9301736f6b4342a3f5c",
+    "size": 78146
+  },
+  {
+    "coordinate": "org.jcraft:jorbis:0.0.17",
+    "file": "jorbis-0.0.17.jar",
+    "sha1": "8872d22b293e8f5d7d56ff92be966e6dc28ebdc6",
+    "size": 99701
+  },
+  {
+    "coordinate": "org.apache.logging.log4j:log4j-api:2.22.1",
+    "file": "log4j-api-2.22.1.jar",
+    "sha1": "bea6fede6328fabafd7e68363161a7ea6605abd1",
+    "size": 335001
+  },
+  {
+    "coordinate": "org.apache.logging.log4j:log4j-core:2.22.1",
+    "file": "log4j-core-2.22.1.jar",
+    "sha1": "7183a25510a02ad00cc6a95d3b3d2a7d3c5a8dc4",
+    "size": 1900022
+  },
+  {
+    "coordinate": "org.apache.logging.log4j:log4j-slf4j2-impl:2.22.1",
+    "file": "log4j-slf4j2-impl-2.22.1.jar",
+    "sha1": "d7e6693c2606cb7e7335047d7bb96dec52db5665",
+    "size": 27364
+  },
+  {
+    "coordinate": "com.mojang:logging:1.2.7",
+    "file": "logging-1.2.7.jar",
+    "sha1": "24cb95ffb0e3433fd6e844c04e68009e504ca1c0",
+    "size": 15343
+  },
+  {
+    "coordinate": "org.lwjgl:lwjgl:3.3.3",
+    "file": "lwjgl-3.3.3.jar",
+    "sha1": "29589b5f87ed335a6c7e7ee6a5775f81f97ecb84",
+    "size": 785029
+  },
+  {
+    "coordinate": "org.lwjgl:lwjgl-freetype:3.3.3",
+    "file": "lwjgl-freetype-3.3.3.jar",
+    "sha1": "a0db6c84a8becc8ca05f9dbfa985edc348a824c7",
+    "size": 450896
+  },
+  {
+    "coordinate": "org.lwjgl:lwjgl-glfw:3.3.3",
+    "file": "lwjgl-glfw-3.3.3.jar",
+    "sha1": "efa1eb78c5ccd840e9f329717109b5e892d72f8e",
+    "size": 135546
+  },
+  {
+    "coordinate": "org.lwjgl:lwjgl-jemalloc:3.3.3",
+    "file": "lwjgl-jemalloc-3.3.3.jar",
+    "sha1": "b543467b7ff3c6920539a88ee602d34098628be5",
+    "size": 43896
+  },
+  {
+    "coordinate": "org.lwjgl:lwjgl-openal:3.3.3",
+    "file": "lwjgl-openal-3.3.3.jar",
+    "sha1": "daada81ceb5fc0c291fbfdd4433cb8d9423577f2",
+    "size": 110586
+  },
+  {
+    "coordinate": "org.lwjgl:lwjgl-opengl:3.3.3",
+    "file": "lwjgl-opengl-3.3.3.jar",
+    "sha1": "02f6b0147078396a58979125a4c947664e98293a",
+    "size": 929192
+  },
+  {
+    "coordinate": "org.lwjgl:lwjgl-stb:3.3.3",
+    "file": "lwjgl-stb-3.3.3.jar",
+    "sha1": "25dd6161988d7e65f71d5065c99902402ee32746",
+    "size": 120283
+  },
+  {
+    "coordinate": "org.lwjgl:lwjgl-tinyfd:3.3.3",
+    "file": "lwjgl-tinyfd-3.3.3.jar",
+    "sha1": "82d755ca94b102e9ca77283b9e2dc46d1b15fbe5",
+    "size": 13400
+  },
+  {
+    "coordinate": "org.lz4:lz4-java:1.8.0",
+    "file": "lz4-java-1.8.0.jar",
+    "sha1": "4b986a99445e49ea5fbf5d149c4b63f6ed6c6780",
+    "size": 682804
+  },
+  {
+    "coordinate": "io.netty:netty-buffer:4.1.97.Final",
+    "file": "netty-buffer-4.1.97.Final.jar",
+    "sha1": "f8f3d8644afa5e6e1a40a3a6aeb9d9aa970ecb4f",
+    "size": 306590
+  },
+  {
+    "coordinate": "io.netty:netty-codec:4.1.97.Final",
+    "file": "netty-codec-4.1.97.Final.jar",
+    "sha1": "384ba4d75670befbedb45c4d3b497a93639c206d",
+    "size": 345274
+  },
+  {
+    "coordinate": "io.netty:netty-common:4.1.97.Final",
+    "file": "netty-common-4.1.97.Final.jar",
+    "sha1": "7cceacaf11df8dc63f23d0fb58e9d4640fc88404",
+    "size": 659930
+  },
+  {
+    "coordinate": "io.netty:netty-handler:4.1.97.Final",
+    "file": "netty-handler-4.1.97.Final.jar",
+    "sha1": "abb86c6906bf512bf2b797a41cd7d2e8d3cd7c36",
+    "size": 560040
+  },
+  {
+    "coordinate": "io.netty:netty-resolver:4.1.97.Final",
+    "file": "netty-resolver-4.1.97.Final.jar",
+    "sha1": "cec8348108dc76c47cf87c669d514be52c922144",
+    "size": 37792
+  },
+  {
+    "coordinate": "io.netty:netty-transport:4.1.97.Final",
+    "file": "netty-transport-4.1.97.Final.jar",
+    "sha1": "f37380d23c9bb079bc702910833b2fd532c9abd0",
+    "size": 489624
+  },
+  {
+    "coordinate": "io.netty:netty-transport-classes-epoll:4.1.97.Final",
+    "file": "netty-transport-classes-epoll-4.1.97.Final.jar",
+    "sha1": "795da37ded759e862457a82d9d92c4d39ce8ecee",
+    "size": 147139
+  },
+  {
+    "coordinate": "com.github.oshi:oshi-core:6.4.10",
+    "file": "oshi-core-6.4.10.jar",
+    "sha1": "b1d8ab82d11d92fd639b56d639f8f46f739dd5fa",
+    "size": 979212
+  },
+  {
+    "coordinate": "com.mojang:text2speech:1.17.9",
+    "file": "text2speech-1.17.9.jar",
+    "sha1": "3cad216e3a7f0c19b4b394388bc9ffc446f13b14",
+    "size": 12243
+  }
+]

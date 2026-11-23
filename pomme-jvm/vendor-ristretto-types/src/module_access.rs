@@ -1,0 +1,321 @@
+use crate::Result;
+use ristretto_classloader::Value;
+use ristretto_classloader::module::ResolvedConfiguration;
+use std::sync::Arc;
+
+/// Information about a defined module.
+#[derive(Clone, Debug)]
+pub struct DefinedModule {
+    /// Module name.
+    pub name: String,
+    /// Whether the module is open (all packages implicitly opened).
+    pub is_open: bool,
+    /// Module version (optional).
+    pub version: Option<String>,
+    /// Module location (optional, e.g., path to JAR).
+    pub location: Option<String>,
+    /// Packages contained in this module.
+    pub packages: ahash::AHashSet<String>,
+    /// The java.lang.Module object for this module (set during defineModule0).
+    pub module_object: Option<Value>,
+}
+
+impl DefinedModule {
+    /// Creates a new defined module.
+    #[must_use]
+    pub fn new(name: String, is_open: bool) -> Self {
+        Self {
+            name,
+            is_open,
+            version: None,
+            location: None,
+            packages: ahash::AHashSet::default(),
+            module_object: None,
+        }
+    }
+}
+
+/// Special constant for "all unnamed modules" target.
+pub const ALL_UNNAMED: &str = "ALL-UNNAMED";
+
+/// Result of an access check.
+pub use ristretto_classloader::module::AccessCheckResult;
+
+/// Get the package name from a fully-qualified class name.
+#[must_use]
+pub fn package_from_class_name(class_name: &str) -> &str {
+    let class_name = if let Some(pos) = class_name.find(';') {
+        &class_name[..pos]
+    } else {
+        class_name
+    };
+    let class_name = class_name.trim_start_matches('[').trim_start_matches('L');
+    if let Some(pos) = class_name.rfind('/') {
+        &class_name[..pos]
+    } else {
+        ""
+    }
+}
+
+/// Trait for module system access, used by intrinsic methods.
+pub trait ModuleAccess: Send + Sync {
+    /// Add an export from `source_module` of package to `target_module`.
+    fn add_export(&self, source_module: &str, package: &str, target_module: Option<&str>);
+
+    /// Add an export from `source_module` of package to all modules.
+    fn add_export_to_all(&self, source_module: &str, package: &str);
+
+    /// Add an export from `source_module` of package to all unnamed modules.
+    fn add_export_to_all_unnamed(&self, source_module: &str, package: &str);
+
+    /// Add an opens from `source_module` of package to `target_module`.
+    fn add_opens(&self, source_module: &str, package: &str, target_module: Option<&str>);
+
+    /// Add an opens from `source_module` of package to all modules.
+    fn add_opens_to_all(&self, source_module: &str, package: &str);
+
+    /// Add an opens from `source_module` of package to all unnamed modules.
+    fn add_opens_to_all_unnamed(&self, source_module: &str, package: &str);
+
+    /// Add a read edge from `source_module` to `target_module`.
+    fn add_read(&self, source_module: &str, target_module: &str);
+
+    /// Define a module.
+    fn define_module(&self, module: DefinedModule);
+
+    /// Get a defined module by name.
+    fn get_module(&self, name: &str) -> Option<DefinedModule>;
+
+    /// Check if a module is open.
+    fn is_module_open(&self, name: &str) -> bool;
+
+    /// Check access between modules.
+    fn check_access(
+        &self,
+        from_module: Option<&str>,
+        to_module: Option<&str>,
+        to_class_name: &str,
+    ) -> AccessCheckResult;
+
+    /// Check reflection access between modules.
+    fn check_reflection_access(
+        &self,
+        from_module: Option<&str>,
+        to_module: Option<&str>,
+        to_class_name: &str,
+    ) -> AccessCheckResult;
+
+    /// Require reflection access, returning an error if denied.
+    ///
+    /// # Errors
+    /// Returns an error if access is denied.
+    fn require_reflection_access(
+        &self,
+        from_module: Option<&str>,
+        to_module: Option<&str>,
+        to_class_name: &str,
+    ) -> Result<()>;
+
+    /// Set the boot class loader's unnamed module.
+    fn set_boot_unnamed_module(&self, module: Value);
+
+    /// Get the boot class loader's unnamed module.
+    fn boot_unnamed_module(&self) -> Option<Value>;
+
+    /// Get the module object for a given package.
+    fn get_module_for_package(&self, package: &str) -> Option<Value>;
+
+    /// Get the resolved module configuration.
+    fn resolved_configuration(&self) -> &ResolvedConfiguration;
+
+    /// Get a shared reference to the resolved module configuration.
+    fn resolved_configuration_arc(&self) -> Arc<ResolvedConfiguration> {
+        Arc::new(self.resolved_configuration().clone())
+    }
+
+    /// Get all packages from all defined modules.
+    fn all_defined_packages(&self) -> Vec<String>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ristretto_classloader::module::ResolvedConfiguration;
+    use std::sync::Mutex;
+
+    struct DefaultModuleAccess {
+        modules: Mutex<Vec<DefinedModule>>,
+        boot_unnamed_module: Mutex<Option<Value>>,
+        resolved_configuration: ResolvedConfiguration,
+    }
+
+    impl DefaultModuleAccess {
+        fn new() -> Self {
+            Self {
+                modules: Mutex::new(Vec::new()),
+                boot_unnamed_module: Mutex::new(None),
+                resolved_configuration: ResolvedConfiguration::empty(),
+            }
+        }
+    }
+
+    impl ModuleAccess for DefaultModuleAccess {
+        fn add_export(&self, _source_module: &str, _package: &str, _target_module: Option<&str>) {}
+
+        fn add_export_to_all(&self, _source_module: &str, _package: &str) {}
+
+        fn add_export_to_all_unnamed(&self, _source_module: &str, _package: &str) {}
+
+        fn add_opens(&self, _source_module: &str, _package: &str, _target_module: Option<&str>) {}
+
+        fn add_opens_to_all(&self, _source_module: &str, _package: &str) {}
+
+        fn add_opens_to_all_unnamed(&self, _source_module: &str, _package: &str) {}
+
+        fn add_read(&self, _source_module: &str, _target_module: &str) {}
+
+        fn define_module(&self, module: DefinedModule) {
+            self.modules.lock().expect("modules lock").push(module);
+        }
+
+        fn get_module(&self, name: &str) -> Option<DefinedModule> {
+            self.modules
+                .lock()
+                .expect("modules lock")
+                .iter()
+                .find(|module| module.name == name)
+                .cloned()
+        }
+
+        fn is_module_open(&self, name: &str) -> bool {
+            self.get_module(name).is_some_and(|module| module.is_open)
+        }
+
+        fn check_access(
+            &self,
+            _from_module: Option<&str>,
+            _to_module: Option<&str>,
+            _to_class_name: &str,
+        ) -> AccessCheckResult {
+            AccessCheckResult::Allowed
+        }
+
+        fn check_reflection_access(
+            &self,
+            _from_module: Option<&str>,
+            _to_module: Option<&str>,
+            _to_class_name: &str,
+        ) -> AccessCheckResult {
+            AccessCheckResult::Allowed
+        }
+
+        fn require_reflection_access(
+            &self,
+            from_module: Option<&str>,
+            to_module: Option<&str>,
+            to_class_name: &str,
+        ) -> Result<()> {
+            assert_eq!(
+                self.check_reflection_access(from_module, to_module, to_class_name),
+                AccessCheckResult::Allowed
+            );
+            Ok(())
+        }
+
+        fn set_boot_unnamed_module(&self, module: Value) {
+            *self
+                .boot_unnamed_module
+                .lock()
+                .expect("boot unnamed module lock") = Some(module);
+        }
+
+        fn boot_unnamed_module(&self) -> Option<Value> {
+            self.boot_unnamed_module
+                .lock()
+                .expect("boot unnamed module lock")
+                .clone()
+        }
+
+        fn get_module_for_package(&self, package: &str) -> Option<Value> {
+            if package == "defined/package" {
+                Some(Value::Int(1))
+            } else {
+                None
+            }
+        }
+
+        fn resolved_configuration(&self) -> &ResolvedConfiguration {
+            &self.resolved_configuration
+        }
+
+        fn all_defined_packages(&self) -> Vec<String> {
+            self.modules
+                .lock()
+                .expect("modules lock")
+                .iter()
+                .flat_map(|module| module.packages.iter().cloned())
+                .collect()
+        }
+    }
+
+    #[test]
+    fn test_defined_module_new() {
+        let module = DefinedModule::new("module.name".to_string(), true);
+        assert_eq!(module.name, "module.name");
+        assert!(module.is_open);
+        assert!(module.version.is_none());
+        assert!(module.location.is_none());
+        assert!(module.packages.is_empty());
+        assert!(module.module_object.is_none());
+    }
+
+    #[test]
+    fn test_package_from_class_name() {
+        assert_eq!(package_from_class_name("java/lang/String"), "java/lang");
+        assert_eq!(package_from_class_name("[Ljava/lang/String;"), "java/lang");
+        assert_eq!(package_from_class_name("[[I"), "");
+        assert_eq!(package_from_class_name("DefaultPackage"), "");
+    }
+
+    #[test]
+    fn test_module_access_methods() -> Result<()> {
+        let module_access = DefaultModuleAccess::new();
+        module_access.add_export("source", "package", Some("target"));
+        module_access.add_export_to_all("source", "package");
+        module_access.add_export_to_all_unnamed("source", "package");
+        module_access.add_opens("source", "package", Some("target"));
+        module_access.add_opens_to_all("source", "package");
+        module_access.add_opens_to_all_unnamed("source", "package");
+        module_access.add_read("source", "target");
+        let mut module = DefinedModule::new("module.name".to_string(), false);
+        module.packages.insert("defined/package".to_string());
+        module_access.define_module(module);
+        assert!(module_access.get_module("module.name").is_some());
+        assert!(!module_access.is_module_open("module.name"));
+        assert_eq!(
+            module_access.check_access(Some("a"), Some("b"), "b/C"),
+            AccessCheckResult::Allowed
+        );
+        assert_eq!(
+            module_access.check_reflection_access(Some("a"), Some("b"), "b/C"),
+            AccessCheckResult::Allowed
+        );
+        module_access.require_reflection_access(Some("a"), Some("b"), "b/C")?;
+        module_access.set_boot_unnamed_module(Value::Int(7));
+        assert_eq!(module_access.boot_unnamed_module(), Some(Value::Int(7)));
+        assert_eq!(
+            module_access.get_module_for_package("defined/package"),
+            Some(Value::Int(1))
+        );
+        assert_eq!(
+            module_access.get_module_for_package("missing/package"),
+            None
+        );
+        assert!(module_access.resolved_configuration().is_empty());
+        assert_eq!(
+            module_access.all_defined_packages(),
+            vec!["defined/package".to_string()]
+        );
+        Ok(())
+    }
+}

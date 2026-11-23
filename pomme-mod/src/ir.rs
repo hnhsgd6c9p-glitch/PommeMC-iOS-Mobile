@@ -500,6 +500,7 @@ mod tests {
             code: vec![0x1a, 0x9c, 0x00, 0x06, 0x1a, 0x74, 0xac, 0x1a, 0xac],
             invoked_methods: Vec::new(),
             field_accesses: Vec::new(),
+            exception_handlers: Vec::new(),
         };
         let ir = lower_method("Example", &method).unwrap();
         assert!(ir.instructions.iter().any(|located| {
@@ -534,6 +535,7 @@ mod tests {
             code: vec![0x1a, 0x9c, 0x00, 0x06, 0x1a, 0x74, 0xac, 0x1a, 0xac],
             invoked_methods: Vec::new(),
             field_accesses: Vec::new(),
+            exception_handlers: Vec::new(),
         };
         let ir = lower_method("Example", &method).unwrap();
         let cfg = build_control_flow_graph(&ir).unwrap();
@@ -567,6 +569,7 @@ mod tests {
             code: vec![0x1a, 0xac],
             invoked_methods: Vec::new(),
             field_accesses: Vec::new(),
+            exception_handlers: Vec::new(),
         };
         assert_eq!(
             lower_method("Example", &method),

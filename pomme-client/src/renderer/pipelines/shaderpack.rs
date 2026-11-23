@@ -1920,13 +1920,8 @@ fn biome_category(name: Option<&str>) -> i32 {
         16 // CAT_NETHER
     } else if matches!(
         path,
-        "the_end"
-            | "small_end_islands"
-            | "end_midlands"
-            | "end_highlands"
-            | "end_barrens"
-    )
-    {
+        "the_end" | "small_end_islands" | "end_midlands" | "end_highlands" | "end_barrens"
+    ) {
         8 // CAT_THE_END
     } else if path.contains("mushroom") {
         15 // CAT_MUSHROOM

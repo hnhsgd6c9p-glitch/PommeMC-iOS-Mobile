@@ -1,0 +1,39 @@
+use ristretto_classfile::JAVA_25;
+use ristretto_classfile::VersionSpecification::GreaterThanOrEqual;
+use ristretto_classloader::Value;
+use ristretto_macros::intrinsic_method;
+use ristretto_types::JavaError;
+use ristretto_types::Thread;
+use ristretto_types::{Parameters, Result};
+use std::sync::Arc;
+
+#[intrinsic_method(
+    "jdk/internal/vm/ThreadSnapshot.create(Ljava/lang/Thread;)Ljdk/internal/vm/ThreadSnapshot;",
+    GreaterThanOrEqual(JAVA_25)
+)]
+pub fn create<T: Thread + 'static>(
+    _thread: Arc<T>,
+    mut parameters: Parameters,
+) -> Result<Option<Value>> {
+    let _thread = parameters.pop_reference()?;
+    Err(JavaError::UnsatisfiedLinkError(
+        "jdk.internal.vm.ThreadSnapshot.create(Ljava/lang/Thread;)Ljdk/internal/vm/ThreadSnapshot;"
+            .to_string(),
+    )
+    .into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_create() {
+        let (_vm, thread) = crate::test::thread().await.expect("thread");
+        let result = create(thread, Parameters::new(vec![Value::Object(None)]));
+        assert_eq!(
+            "jdk.internal.vm.ThreadSnapshot.create(Ljava/lang/Thread;)Ljdk/internal/vm/ThreadSnapshot;",
+            result.unwrap_err().to_string()
+        );
+    }
+}

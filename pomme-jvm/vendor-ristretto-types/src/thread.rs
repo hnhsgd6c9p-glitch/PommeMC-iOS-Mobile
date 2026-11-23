@@ -1,0 +1,393 @@
+use crate::Result;
+use crate::frame::Frame;
+use ristretto_classfile::JavaStr;
+use ristretto_classloader::{Class, Method, Value};
+use std::sync::Arc;
+use std::time::Duration;
+
+/// Trait representing a VM thread interface.
+pub trait Thread: Send + Sync {
+    /// The concrete VM type.
+    type Vm: crate::VM;
+
+    /// The concrete stack frame type.
+    type Frame: Frame;
+
+    /// Get the identifier of the thread.
+    fn id(&self) -> u64;
+
+    /// Get the virtual machine that owns the thread.
+    ///
+    /// # Errors
+    /// Returns an error if the VM cannot be accessed.
+    fn vm(&self) -> Result<Arc<Self::Vm>>;
+
+    /// Get the name of the thread.
+    fn name(&self) -> crate::BoxFuture<'_, String>;
+
+    /// Set the name of the thread.
+    fn set_name<'a>(&'a self, name: &'a str) -> crate::BoxFuture<'a, ()>;
+
+    /// Get the Java object associated with this thread.
+    fn java_object(&self) -> crate::BoxFuture<'_, Value>;
+
+    /// Set the Java object associated with this thread.
+    fn set_java_object(&self, value: Value) -> crate::BoxFuture<'_, ()>;
+
+    /// Get the call stack frames.
+    ///
+    /// # Errors
+    /// Returns an error if the frames cannot be accessed.
+    fn frames(&self) -> crate::BoxFuture<'_, Result<Vec<Arc<Self::Frame>>>>;
+
+    /// Interrupt the thread.
+    fn interrupt(&self);
+
+    /// Check if the thread is interrupted.
+    fn is_interrupted(&self, clear_interrupt: bool) -> bool;
+
+    /// Sleep the thread for the specified duration.
+    /// Returns `true` if the sleep was interrupted.
+    fn sleep(&self, duration: Duration) -> crate::BoxFuture<'_, bool>;
+
+    /// Park the thread.
+    ///
+    /// # Errors
+    /// Returns an error if the thread cannot be parked.
+    fn park(&self, is_absolute: bool, time: u64) -> crate::BoxFuture<'_, Result<()>>;
+
+    /// Unpark the thread.
+    fn unpark(&self);
+
+    /// Load, link, and initialize a class by name.
+    ///
+    /// # Errors
+    /// Returns an error if the class cannot be loaded.
+    fn class<'a>(&'a self, class_name: &'a str) -> crate::BoxFuture<'a, Result<Arc<Class>>>;
+
+    /// Load, link, and initialize a class by name from a `JavaStr` reference.
+    ///
+    /// This avoids the need for callers to manually convert `&JavaStr` to `&str` via
+    /// `to_str_lossy()`. The conversion is handled internally.
+    ///
+    /// # Errors
+    /// Returns an error if the class cannot be loaded.
+    fn class_java_str<'a>(
+        &'a self,
+        class_name: &'a JavaStr,
+    ) -> crate::BoxFuture<'a, Result<Arc<Class>>>;
+
+    /// Load and link a class by name without initializing it.
+    ///
+    /// # Errors
+    /// Returns an error if the class cannot be loaded.
+    fn load_and_link_class<'a>(
+        &'a self,
+        class_name: &'a JavaStr,
+    ) -> crate::BoxFuture<'a, Result<Arc<Class>>>;
+
+    /// Link a specific class definition, optionally initializing it, without resolving its name.
+    ///
+    /// # Errors
+    /// Returns an error if linking or initialization fails.
+    fn resolve_class<'a>(
+        &'a self,
+        class: &'a Arc<Class>,
+        initialize: bool,
+    ) -> crate::BoxFuture<'a, Result<Arc<Class>>>;
+
+    /// Resolve a symbolic class reference using its referring class's defining loader.
+    ///
+    /// # Errors
+    /// Returns an error if the referenced class cannot be loaded or linked.
+    fn load_referenced_class<'a>(
+        &'a self,
+        caller: &'a Arc<Class>,
+        name: &'a JavaStr,
+    ) -> crate::BoxFuture<'a, Result<Arc<Class>>>;
+
+    /// Register a class with the class loader.
+    ///
+    /// # Errors
+    /// Returns an error if the class cannot be registered.
+    fn register_class(&self, class: Arc<Class>) -> crate::BoxFuture<'_, Result<()>>;
+
+    /// Resolve a method by class name and signature, then dispatch instance methods on the receiver.
+    /// Static methods, constructors, and private methods execute their resolved declaration.
+    ///
+    /// # Errors
+    /// Returns an error if the method cannot be invoked.
+    fn invoke<'a>(
+        &'a self,
+        class: &'a str,
+        method: &'a str,
+        parameters: &'a [Value],
+    ) -> crate::BoxFuture<'a, Result<Option<Value>>>;
+
+    /// Invoke a method, returning an error if no value is returned.
+    ///
+    /// # Errors
+    /// Returns an error if the method cannot be invoked or returns no value.
+    fn try_invoke<'a>(
+        &'a self,
+        class: &'a str,
+        method: &'a str,
+        parameters: &'a [Value],
+    ) -> crate::BoxFuture<'a, Result<Value>>;
+
+    /// Execute a method on a class.
+    ///
+    /// # Errors
+    /// Returns an error if the method cannot be executed.
+    fn execute<'a>(
+        &'a self,
+        class: &'a Arc<Class>,
+        method: &'a Arc<Method>,
+        parameters: &'a [Value],
+    ) -> crate::BoxFuture<'a, Result<Option<Value>>>;
+
+    /// Execute a method, returning an error if no value is returned.
+    ///
+    /// # Errors
+    /// Returns an error if the method cannot be executed or returns no value.
+    fn try_execute<'a>(
+        &'a self,
+        class: &'a Arc<Class>,
+        method: &'a Arc<Method>,
+        parameters: &'a [Value],
+    ) -> crate::BoxFuture<'a, Result<Value>>;
+
+    /// Create a new VM object by invoking a constructor.
+    ///
+    /// # Errors
+    /// Returns an error if the object cannot be created.
+    fn object<'a>(
+        &'a self,
+        class_name: &'a str,
+        descriptor: &'a str,
+        parameters: &'a [Value],
+    ) -> crate::BoxFuture<'a, Result<Value>>;
+
+    /// Intern a string, returning the associated Java String value.
+    ///
+    /// # Errors
+    /// Returns an error if the string cannot be interned.
+    fn intern_string<'a>(&'a self, string: &'a str) -> crate::BoxFuture<'a, Result<Value>>;
+}
+
+/// Blanket implementation of Thread for `Arc<T>` where `T: Thread`.
+impl<T: Thread> Thread for Arc<T> {
+    type Vm = T::Vm;
+    type Frame = T::Frame;
+
+    fn id(&self) -> u64 {
+        (**self).id()
+    }
+
+    fn vm(&self) -> Result<Arc<Self::Vm>> {
+        (**self).vm()
+    }
+
+    fn name(&self) -> crate::BoxFuture<'_, String> {
+        (**self).name()
+    }
+
+    fn set_name<'a>(&'a self, name: &'a str) -> crate::BoxFuture<'a, ()> {
+        (**self).set_name(name)
+    }
+
+    fn java_object(&self) -> crate::BoxFuture<'_, Value> {
+        (**self).java_object()
+    }
+
+    fn set_java_object(&self, value: Value) -> crate::BoxFuture<'_, ()> {
+        (**self).set_java_object(value)
+    }
+
+    fn frames(&self) -> crate::BoxFuture<'_, Result<Vec<Arc<Self::Frame>>>> {
+        (**self).frames()
+    }
+
+    fn interrupt(&self) {
+        (**self).interrupt();
+    }
+
+    fn is_interrupted(&self, clear_interrupt: bool) -> bool {
+        (**self).is_interrupted(clear_interrupt)
+    }
+
+    fn sleep(&self, duration: Duration) -> crate::BoxFuture<'_, bool> {
+        (**self).sleep(duration)
+    }
+
+    fn park(&self, is_absolute: bool, time: u64) -> crate::BoxFuture<'_, Result<()>> {
+        (**self).park(is_absolute, time)
+    }
+
+    fn unpark(&self) {
+        (**self).unpark();
+    }
+
+    fn class<'a>(&'a self, class_name: &'a str) -> crate::BoxFuture<'a, Result<Arc<Class>>> {
+        (**self).class(class_name)
+    }
+
+    fn class_java_str<'a>(
+        &'a self,
+        class_name: &'a JavaStr,
+    ) -> crate::BoxFuture<'a, Result<Arc<Class>>> {
+        (**self).class_java_str(class_name)
+    }
+
+    fn load_and_link_class<'a>(
+        &'a self,
+        class_name: &'a JavaStr,
+    ) -> crate::BoxFuture<'a, Result<Arc<Class>>> {
+        (**self).load_and_link_class(class_name)
+    }
+
+    fn register_class(&self, class: Arc<Class>) -> crate::BoxFuture<'_, Result<()>> {
+        (**self).register_class(class)
+    }
+
+    fn load_referenced_class<'a>(
+        &'a self,
+        caller: &'a Arc<Class>,
+        name: &'a JavaStr,
+    ) -> crate::BoxFuture<'a, Result<Arc<Class>>> {
+        (**self).load_referenced_class(caller, name)
+    }
+
+    fn resolve_class<'a>(
+        &'a self,
+        class: &'a Arc<Class>,
+        initialize: bool,
+    ) -> crate::BoxFuture<'a, Result<Arc<Class>>> {
+        (**self).resolve_class(class, initialize)
+    }
+
+    fn invoke<'a>(
+        &'a self,
+        class: &'a str,
+        method: &'a str,
+        parameters: &'a [Value],
+    ) -> crate::BoxFuture<'a, Result<Option<Value>>> {
+        (**self).invoke(class, method, parameters)
+    }
+
+    fn try_invoke<'a>(
+        &'a self,
+        class: &'a str,
+        method: &'a str,
+        parameters: &'a [Value],
+    ) -> crate::BoxFuture<'a, Result<Value>> {
+        (**self).try_invoke(class, method, parameters)
+    }
+
+    fn execute<'a>(
+        &'a self,
+        class: &'a Arc<Class>,
+        method: &'a Arc<Method>,
+        parameters: &'a [Value],
+    ) -> crate::BoxFuture<'a, Result<Option<Value>>> {
+        (**self).execute(class, method, parameters)
+    }
+
+    fn try_execute<'a>(
+        &'a self,
+        class: &'a Arc<Class>,
+        method: &'a Arc<Method>,
+        parameters: &'a [Value],
+    ) -> crate::BoxFuture<'a, Result<Value>> {
+        (**self).try_execute(class, method, parameters)
+    }
+
+    fn object<'a>(
+        &'a self,
+        class_name: &'a str,
+        descriptor: &'a str,
+        parameters: &'a [Value],
+    ) -> crate::BoxFuture<'a, Result<Value>> {
+        (**self).object(class_name, descriptor, parameters)
+    }
+
+    fn intern_string<'a>(&'a self, string: &'a str) -> crate::BoxFuture<'a, Result<Value>> {
+        (**self).intern_string(string)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::VM;
+    use crate::test_utils;
+    use ristretto_classfile::JAVA_17;
+
+    #[tokio::test]
+    async fn test_arc_thread_delegates_to_inner_thread() -> Result<()> {
+        let vm = test_utils::MockVm::new(JAVA_17);
+        let inner = test_utils::MockThread::new_with_id(vm, 123);
+        let thread: Arc<test_utils::MockThread> = inner;
+        let thread_ref: &dyn Thread<Vm = test_utils::MockVm, Frame = test_utils::MockFrame> =
+            &thread;
+
+        assert_eq!(thread_ref.id(), 123);
+        assert_eq!(thread_ref.vm()?.java_version(), "mock-java");
+        thread_ref.set_name("arc-thread").await;
+        assert_eq!(thread_ref.name().await, "arc-thread");
+        thread_ref.set_java_object(Value::Int(1)).await;
+        assert_eq!(thread_ref.java_object().await, Value::Int(1));
+        assert!(thread_ref.frames().await?.is_empty());
+        thread_ref.interrupt();
+        assert!(thread_ref.is_interrupted(false));
+        assert!(thread_ref.sleep(Duration::from_millis(0)).await);
+        thread_ref.park(false, 0).await?;
+        thread_ref.unpark();
+        let class = thread_ref.class("java/lang/Object").await?;
+        let java_str = JavaStr::try_from_str("java/lang/Object")?;
+        assert_eq!(
+            thread_ref.class_java_str(java_str).await?.name(),
+            class.name()
+        );
+        assert_eq!(
+            thread_ref.load_and_link_class(java_str).await?.name(),
+            class.name()
+        );
+        thread_ref.register_class(class.clone()).await?;
+        assert_eq!(
+            thread_ref
+                .invoke("Owner", "method", &[Value::Int(2)])
+                .await?
+                .expect("invoke value"),
+            Value::Int(2)
+        );
+        assert_eq!(
+            thread_ref
+                .try_invoke("Owner", "method", &[Value::Int(3)])
+                .await?,
+            Value::Int(3)
+        );
+        let method = test_utils::method("run", "()V");
+        assert_eq!(
+            thread_ref
+                .execute(&class, &method, &[Value::Int(4)])
+                .await?
+                .expect("execute value"),
+            Value::Int(4)
+        );
+        assert_eq!(
+            thread_ref
+                .try_execute(&class, &method, &[Value::Int(5)])
+                .await?,
+            Value::Int(5)
+        );
+        assert!(
+            thread_ref
+                .object("java/lang/Object", "()V", &[])
+                .await?
+                .is_object()
+        );
+        assert!(thread_ref.intern_string("value").await?.is_object());
+        Ok(())
+    }
+}

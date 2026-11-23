@@ -66,6 +66,8 @@ pub struct App {
     soft_keyboard: bool,
     #[cfg(feature = "test-harness")]
     harness: Option<crate::harness::Harness>,
+    #[cfg(feature = "java-mods")]
+    fabric_session: Option<pomme_jvm::ristretto_backend::FabricSession>,
     chunk_bench: Option<ChunkBenchLaunch>,
 }
 
@@ -225,6 +227,9 @@ impl App {
         user: UserData,
         quick_play: Option<QuickPlay>,
         window_size: winit::dpi::LogicalSize<u32>,
+        #[cfg(feature = "java-mods")] fabric_session: Option<
+            pomme_jvm::ristretto_backend::FabricSession,
+        >,
     ) -> Self {
         let pending_skin_uuid = user.has_profile.then_some(user.uuid);
         let core = AppCore::new(version, data_dirs, tokio_rt, presence, user, window_size);
@@ -243,6 +248,8 @@ impl App {
             fps_limiter: FramerateLimiter::new(),
             #[cfg(feature = "test-harness")]
             harness: None,
+            #[cfg(feature = "java-mods")]
+            fabric_session,
             chunk_bench: None,
         }
     }
@@ -1073,6 +1080,16 @@ impl ApplicationHandler for App {
                 if matches!(self.phase.get(), AppPhase::Setup { .. }) {
                     return;
                 }
+                #[cfg(feature = "java-mods")]
+                if matches!(self.phase.get(), AppPhase::InGame { .. }) {
+                    if let Some(session) = &self.fabric_session {
+                        if let Err(err) = self.core.tokio_rt.block_on(
+                            session.invoke_static_void("PommeGameProvider", "dispatchHudRender"),
+                        ) {
+                            tracing::warn!("Fabric HUD render failed: {err:?}");
+                        }
+                    }
+                }
 
                 // `dt` is clamped for physics; `raw_dt` is the unclamped interval the
                 // benchmarks need.
@@ -1198,7 +1215,16 @@ impl ApplicationHandler for App {
                     } => {
                         let update_result = match world.as_mut().map(World::poll) {
                             Some(Err(reason)) => GameUpdateResult::Disconnected { reason },
-                            _ => update_game(core, dt, raw_dt, &mut gfx, &connection, &mut game),
+                            _ => update_game(
+                                core,
+                                dt,
+                                raw_dt,
+                                &mut gfx,
+                                &connection,
+                                &mut game,
+                                #[cfg(feature = "java-mods")]
+                                self.fabric_session.as_ref(),
+                            ),
                         };
 
                         match update_result {

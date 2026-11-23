@@ -2392,6 +2392,41 @@ fn tick_tool_highlight(core: &AppCore, game: &mut GameState) {
     game.last_tool_highlight = selected;
 }
 
+#[cfg(feature = "java-mods")]
+fn publish_fabric_game_state(
+    core: &AppCore,
+    session: &pomme_jvm::ristretto_backend::FabricSession,
+    game: &GameState,
+) {
+    let state = format!(
+        "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},true",
+        game.player.position.x,
+        game.player.position.y,
+        game.player.position.z,
+        game.player.health,
+        game.player.max_health,
+        game.player.food,
+        game.player.saturation,
+        game.player.armor,
+        game.player.absorption,
+        game.player.fall_distance,
+        game.player.air_supply,
+        game.player.on_ground,
+        game.player.sprinting,
+        game.player.crouching,
+        game.player.swimming,
+        game.paused,
+        game.player.in_water,
+        game.player.experience_level,
+    );
+    if let Err(err) = core
+        .tokio_rt
+        .block_on(session.set_system_property("pomme.state", &state))
+    {
+        tracing::warn!("Fabric pomme.state update failed: {err:?}");
+    }
+}
+
 pub fn update_game(
     core: &mut AppCore,
     dt: f32,
@@ -2399,6 +2434,9 @@ pub fn update_game(
     gfx: &mut Gfx,
     connection: &ConnectionHandle,
     game: &mut GameState,
+    #[cfg(feature = "java-mods")] fabric_session: Option<
+        &pomme_jvm::ristretto_backend::FabricSession,
+    >,
 ) -> GameUpdateResult {
     // Snapshot last frame's phase timings before this frame overwrites them: they
     // align with `raw_dt`, which measures the previous frame's full duration.
@@ -2493,6 +2531,15 @@ pub fn update_game(
         }
     }
     while core.tick_accumulator >= TICK_RATE {
+        #[cfg(feature = "java-mods")]
+        if let Some(session) = fabric_session {
+            publish_fabric_game_state(core, session, game);
+            if let Err(err) = core.tokio_rt.block_on(
+                session.invoke_static_void("PommeGameProvider", "dispatchClientTickStart"),
+            ) {
+                tracing::warn!("Fabric tick start failed: {err:?}");
+            }
+        }
         game.tick_count = game.tick_count.wrapping_add(1);
         if !game.deterministic {
             game.block_light_flicker = tick_block_light_flicker(game.block_light_flicker);
@@ -2581,6 +2628,16 @@ pub fn update_game(
             game.xp_display_start_tick = game.tick_count as i64;
         }
         AppCore::send_client_tick_end(connection);
+        #[cfg(feature = "java-mods")]
+        if let Some(session) = fabric_session {
+            publish_fabric_game_state(core, session, game);
+            if let Err(err) = core
+                .tokio_rt
+                .block_on(session.invoke_static_void("PommeGameProvider", "dispatchClientTickEnd"))
+            {
+                tracing::warn!("Fabric tick end failed: {err:?}");
+            }
+        }
         core.tick_accumulator -= TICK_RATE;
     }
     if ticked {

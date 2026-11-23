@@ -20,9 +20,13 @@ mod entity;
 #[cfg(feature = "test-harness")]
 mod harness;
 mod headless;
+#[cfg(feature = "java-mods")]
+pub mod java_mods;
 mod lang;
 mod logging;
 mod mob_effect;
+#[cfg(feature = "native-mods")]
+pub mod mods;
 mod net;
 mod particle;
 mod physics;
@@ -187,6 +191,18 @@ pub fn run(args: LaunchArgs, platform: Platform) {
     data_dirs.ensure_game_dir().ok();
     tracing::info!("Installation directory: {}", data_dirs.game_dir.display());
 
+    #[cfg(feature = "native-mods")]
+    {
+        let mods_dir = data_dirs.game_dir.join("mods");
+        let report = mods::discover_and_load_native_mods(&mods_dir);
+        for mod_id in &report.executed_init {
+            tracing::info!("loaded native mod: {mod_id}");
+        }
+        for error in &report.errors {
+            tracing::warn!("native mod error: {error}");
+        }
+    }
+
     // A single connection needs only a few async workers; the default runtime
     // spawns one per core and floods them decoding the chunk-load burst, starving
     // the render/mesh threads. Cap it so those cores stay free.
@@ -201,6 +217,25 @@ pub fn run(args: LaunchArgs, platform: Platform) {
         let _runtime = rt.enter();
         crate::net::chat_security::ProfileKeyServices::prefetch();
     }
+
+    #[cfg(feature = "java-mods")]
+    let fabric_session = {
+        let mods_dir = data_dirs.game_dir.join("mods");
+        let session = java_mods::initialize_installed(
+            &mods_dir,
+            version,
+            args.username.as_deref().unwrap_or("Player"),
+            &rt,
+        );
+        if session.is_some() {
+            tracing::info!("Java/Fabric session initialized");
+        } else {
+            tracing::warn!("Java/Fabric session not initialized");
+        }
+        session
+    };
+    #[cfg(not(feature = "java-mods"))]
+    let fabric_session: Option<()> = None;
 
     let quick_play = args.quick_play().or_else(|| {
         args.chunk_bench.map(|_| {
@@ -245,6 +280,8 @@ pub fn run(args: LaunchArgs, platform: Platform) {
         user,
         quick_play,
         winit::dpi::LogicalSize::new(args.width, args.height),
+        #[cfg(feature = "java-mods")]
+        fabric_session,
     )
     .with_chunk_bench(args.chunk_bench);
     if check_for_update {

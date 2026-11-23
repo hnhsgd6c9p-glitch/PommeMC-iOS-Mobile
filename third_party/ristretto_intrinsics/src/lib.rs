@@ -1,0 +1,57 @@
+//! # Ristretto Intrinsics
+//!
+//! [![Code Coverage](https://codecov.io/gh/theseus-rs/ristretto/branch/main/graph/badge.svg)](https://codecov.io/gh/theseus-rs/ristretto)
+//! [![Benchmarks](https://img.shields.io/badge/%F0%9F%90%B0_bencher-enabled-6ec241)](https://bencher.dev/perf/theseus-rs-ristretto)
+//! [![License](https://img.shields.io/crates/l/ristretto_intrinsics)](https://github.com/theseus-rs/ristretto#license)
+//! [![Semantic Versioning](https://img.shields.io/badge/%E2%9A%99%EF%B8%8F_SemVer-2.0.0-blue)](https://semver.org/spec/v2.0.0.html)
+//!
+//! This crate provides intrinsics methods for the Ristretto VM.
+
+#![deny(unsafe_code)]
+#![cfg_attr(
+    test,
+    expect(
+        clippy::panic_in_result_fn,
+        reason = "intrinsic unit tests use assertions in Result-returning tests"
+    )
+)]
+#![cfg_attr(
+    all(test, not(target_family = "wasm")),
+    expect(
+        clippy::expect_used,
+        reason = "native intrinsic unit tests use fixture setup expects"
+    )
+)]
+
+#[cfg(test)]
+pub(crate) mod test;
+
+/// Methods from the Apple-specific packages
+#[cfg(target_os = "macos")]
+pub mod apple;
+/// Filesystem helpers with platform-appropriate async backends.
+mod async_fs;
+mod bounds;
+mod registry;
+pub use registry::register;
+#[doc(hidden)]
+pub use registry::signatures_for_os;
+/// Methods from the COM-related packages
+pub mod com;
+/// Core Java standard library methods
+pub mod java;
+/// JDK-specific internal methods
+pub mod jdk;
+/// Host locale detection
+mod locale;
+/// Dynamic native-library support shared with the VM.
+pub mod native_library;
+mod net_helpers;
+/// Methods for handling Java properties
+pub mod properties;
+/// Methods from Sun packages
+pub mod sun;
+
+// Re-export specific functions needed by the VM
+pub use java::lang::invoke::methodhandle::call_method_handle_target;
+pub use java::lang::object::get_monitor_id;

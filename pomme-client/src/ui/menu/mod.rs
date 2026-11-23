@@ -223,20 +223,14 @@ fn default_chunk_detail() -> u32 {
 }
 
 fn default_render_distance() -> u32 {
-    if cfg!(target_os = "ios") {
-        16
-    } else {
-        12
-    }
+    if cfg!(target_os = "ios") { 16 } else { 12 }
 }
 
 fn default_pomme_version() -> String {
     pomme_protocol::version::VERSIONS
         .iter()
         .find(|version| crate::net::translate::joinable(version.protocol))
-        .map_or(pomme_protocol::version::NATIVE.name, |version| {
-            version.name
-        })
+        .map_or(pomme_protocol::version::NATIVE.name, |version| version.name)
         .to_owned()
 }
 
