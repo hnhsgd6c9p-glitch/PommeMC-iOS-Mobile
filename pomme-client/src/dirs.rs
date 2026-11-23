@@ -10,6 +10,8 @@ pub struct DataDirs {
     pub bedrock_assets_dir: PathBuf,
     pub jar_assets_dir: PathBuf,
     pub game_dir: PathBuf,
+    /// Version-specific mod home inside the active profile.
+    pub mods_dir: PathBuf,
     pub cache_dir: PathBuf,
 }
 
@@ -35,6 +37,9 @@ impl DataDirs {
             .unwrap_or_else(|| layout.minecraft_versions());
 
         let jar_assets_dir = versions_dir.join(version).join("extracted/assets");
+        let mod_version = pomme_protocol::ProtocolVersion::from_name(version)
+            .map_or("unsupported", |version| version.name);
+        let mods_dir = game_dir.join("mods").join(mod_version);
 
         let indexes_dir = assets_dir.join("indexes");
         let objects_dir = assets_dir.join("objects");
@@ -48,12 +53,14 @@ impl DataDirs {
             pomme_assets_dir: layout.pomme_assets(),
             bedrock_assets_dir: layout.bedrock_assets(),
             game_dir,
+            mods_dir,
             cache_dir: layout.cache(version),
         }
     }
 
     pub fn ensure_game_dir(&self) -> std::io::Result<()> {
-        pomme_dirs::create_profile(&self.game_dir)
+        pomme_dirs::create_profile(&self.game_dir)?;
+        std::fs::create_dir_all(&self.mods_dir)
     }
 
     /// `version`'s assets are downloaded, so the client can start on them.

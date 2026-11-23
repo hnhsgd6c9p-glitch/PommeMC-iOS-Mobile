@@ -66,6 +66,8 @@ pub struct App {
     soft_keyboard: bool,
     #[cfg(feature = "test-harness")]
     harness: Option<crate::harness::Harness>,
+    #[cfg(feature = "java-mods")]
+    fabric_session: Option<pomme_jvm::ristretto_backend::FabricSession>,
     chunk_bench: Option<ChunkBenchLaunch>,
 }
 
@@ -225,6 +227,9 @@ impl App {
         user: UserData,
         quick_play: Option<QuickPlay>,
         window_size: winit::dpi::LogicalSize<u32>,
+        #[cfg(feature = "java-mods")] fabric_session: Option<
+            pomme_jvm::ristretto_backend::FabricSession,
+        >,
     ) -> Self {
         let pending_skin_uuid = user.has_profile.then_some(user.uuid);
         let core = AppCore::new(version, data_dirs, tokio_rt, presence, user, window_size);
@@ -243,6 +248,8 @@ impl App {
             fps_limiter: FramerateLimiter::new(),
             #[cfg(feature = "test-harness")]
             harness: None,
+            #[cfg(feature = "java-mods")]
+            fabric_session,
             chunk_bench: None,
         }
     }
@@ -633,9 +640,29 @@ impl ApplicationHandler for App {
             WindowEvent::ModifiersChanged(mods) => {
                 self.core.input.set_modifiers(mods);
             }
+            WindowEvent::Ime(winit::event::Ime::Commit(text)) => {
+                self.core.input.on_ime_commit(&text);
+            }
             // TODO: Migrate _fully_ to Action system
             WindowEvent::KeyboardInput { event, .. } => {
                 let key = input::key_code(&event);
+                // Winit's iOS software keyboard emits committed characters as
+                // KeyboardInput events with an Unidentified physical key and
+                // `event.text`, not as Ime::Commit. Route those characters to
+                // the focused text consumer even though there is no KeyCode.
+                #[cfg(mobile)]
+                if event.state.is_pressed() && key.is_none() && event.text.is_some() {
+                    let accepts_text = match self.phase.get() {
+                        AppPhase::InMenu { .. } => self.core.menu.text_field_focused(),
+                        AppPhase::Connecting { game, .. } | AppPhase::InGame { game, .. } => {
+                            game.chat.is_open() || game.wants_text_input()
+                        }
+                        _ => false,
+                    };
+                    if accepts_text {
+                        self.core.input.on_menu_key_event(&event);
+                    }
+                }
                 self.phase.transition(|mut app| {
                     if self.core.input.captures_key_event(&event) {
                         self.core.input.on_key_event(&event);
@@ -784,6 +811,12 @@ impl ApplicationHandler for App {
                                                 .input
                                                 .clear_action(crate::app::input::Action::OpenMenu);
                                             if closed {
+                                                #[cfg(mobile)]
+                                                {
+                                                    self.core.input.text_capture = false;
+                                                    gfx.window.set_ime_allowed(false);
+                                                    self.soft_keyboard = false;
+                                                }
                                                 self.core.apply_cursor_grab(
                                                     &gfx.window,
                                                     Some(&mut game),
@@ -975,6 +1008,8 @@ impl ApplicationHandler for App {
             }
             // Desktop touchscreens already drive the mouse through the OS.
             WindowEvent::Touch(touch) if cfg!(mobile) => {
+                // Route touch phases consistently while chat is open; a tap
+                // elsewhere must not silently dismiss the editor/keyboard.
                 let gameplay = self.world_has_pointer();
                 if let Some(gfx) = self.phase.gfx_mut() {
                     let width = gfx.renderer.screen_width() as f32;
@@ -1013,6 +1048,13 @@ impl ApplicationHandler for App {
                 if !focused {
                     self.core.menu.end_binding_capture();
                     self.core.input.set_binding_capture(false);
+                    #[cfg(mobile)]
+                    {
+                        if let Some(gfx) = self.phase.gfx_mut() {
+                            gfx.window.set_ime_allowed(false);
+                        }
+                        self.soft_keyboard = false;
+                    }
                 }
                 self.core.unfocused_since = (!focused).then(Instant::now);
                 // The window manager may silently drop a cursor lock on focus
@@ -1037,6 +1079,16 @@ impl ApplicationHandler for App {
             WindowEvent::RedrawRequested => {
                 if matches!(self.phase.get(), AppPhase::Setup { .. }) {
                     return;
+                }
+                #[cfg(feature = "java-mods")]
+                if matches!(self.phase.get(), AppPhase::InGame { .. }) {
+                    if let Some(session) = &self.fabric_session {
+                        if let Err(err) = self.core.tokio_rt.block_on(
+                            session.invoke_static_void("PommeGameProvider", "dispatchHudRender"),
+                        ) {
+                            tracing::warn!("Fabric HUD render failed: {err:?}");
+                        }
+                    }
                 }
 
                 // `dt` is clamped for physics; `raw_dt` is the unclamped interval the
@@ -1163,7 +1215,16 @@ impl ApplicationHandler for App {
                     } => {
                         let update_result = match world.as_mut().map(World::poll) {
                             Some(Err(reason)) => GameUpdateResult::Disconnected { reason },
-                            _ => update_game(core, dt, raw_dt, &mut gfx, &connection, &mut game),
+                            _ => update_game(
+                                core,
+                                dt,
+                                raw_dt,
+                                &mut gfx,
+                                &connection,
+                                &mut game,
+                                #[cfg(feature = "java-mods")]
+                                self.fabric_session.as_ref(),
+                            ),
                         };
 
                         match update_result {

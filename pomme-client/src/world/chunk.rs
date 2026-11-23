@@ -509,6 +509,9 @@ pub struct ChunkStore {
 /// The 128-chunk max extended-view-distance servers allow; server
 /// announcements clamp to it and the chunk grid is sized for it.
 pub const MAX_VIEW_DISTANCE: u32 = 128;
+/// Largest positive client render-distance value in the protocol's signed
+/// byte field. The chunk cache reserves one extra ring slot on each side.
+pub const MAX_CLIENT_VIEW_DISTANCE: u32 = MAX_VIEW_DISTANCE - 1;
 
 impl ChunkStore {
     pub fn new(view_distance: u32) -> Self {

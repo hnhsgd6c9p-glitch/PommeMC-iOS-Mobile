@@ -49,8 +49,12 @@ def env_path(name):
 def fetch_source(tag, expected_sha256):
     """The unpacked source tree, downloading and verifying it once."""
     source = WORK_DIR / f"openal-soft-{tag}"
-    if source.is_dir():
+    # Another build step may create this directory before the archive is
+    # unpacked. Do not mistake an empty/partial directory for a valid source
+    # checkout: CMake must see the top-level CMakeLists.txt.
+    if (source / "CMakeLists.txt").is_file():
         return source
+    shutil.rmtree(source, ignore_errors=True)
     url = f"https://github.com/kcat/openal-soft/archive/refs/tags/{tag}.tar.gz"
     try:
         archive = download_verified(url, expected_sha256, WORK_DIR / f"openal-soft-{tag}.tar.gz")

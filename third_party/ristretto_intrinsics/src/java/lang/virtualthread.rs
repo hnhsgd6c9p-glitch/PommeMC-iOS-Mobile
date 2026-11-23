@@ -1,0 +1,172 @@
+use ristretto_classfile::VersionSpecification::{Equal, GreaterThan, GreaterThanOrEqual};
+use ristretto_classfile::{JAVA_17, JAVA_21, JAVA_25};
+use ristretto_classloader::Value;
+use ristretto_macros::intrinsic_method;
+use ristretto_types::Thread;
+use ristretto_types::{Parameters, Result};
+use std::sync::Arc;
+use std::time::Duration;
+
+#[intrinsic_method(
+    "java/lang/VirtualThread.notifyJvmtiDisableSuspend(Z)V",
+    GreaterThanOrEqual(JAVA_25)
+)]
+pub fn notify_jvmti_disable_suspend<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Ok(None)
+}
+
+#[intrinsic_method("java/lang/VirtualThread.notifyJvmtiEnd()V", GreaterThan(JAVA_17))]
+pub fn notify_jvmti_end<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Ok(None)
+}
+
+#[intrinsic_method("java/lang/VirtualThread.notifyJvmtiHideFrames(Z)V", Equal(JAVA_21))]
+pub fn notify_jvmti_hide_frames<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Ok(None)
+}
+
+#[intrinsic_method("java/lang/VirtualThread.notifyJvmtiMount(Z)V", GreaterThan(JAVA_17))]
+pub fn notify_jvmti_mount<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Ok(None)
+}
+
+#[intrinsic_method("java/lang/VirtualThread.notifyJvmtiStart()V", GreaterThan(JAVA_17))]
+pub fn notify_jvmti_start<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Ok(None)
+}
+
+#[intrinsic_method("java/lang/VirtualThread.notifyJvmtiUnmount(Z)V", GreaterThan(JAVA_17))]
+pub fn notify_jvmti_unmount<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Ok(None)
+}
+
+#[intrinsic_method(
+    "java/lang/VirtualThread.postPinnedEvent(Ljava/lang/String;)V",
+    GreaterThanOrEqual(JAVA_25)
+)]
+pub fn post_pinned_event<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Ok(None)
+}
+
+#[intrinsic_method(
+    "java/lang/VirtualThread.registerNatives()V",
+    GreaterThanOrEqual(JAVA_21)
+)]
+pub fn register_natives<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    Ok(None)
+}
+
+#[intrinsic_method(
+    "java/lang/VirtualThread.takeVirtualThreadListToUnblock()Ljava/lang/VirtualThread;",
+    GreaterThanOrEqual(JAVA_25)
+)]
+pub async fn take_virtual_thread_list_to_unblock<T: Thread + 'static>(
+    _thread: Arc<T>,
+    _parameters: Parameters,
+) -> Result<Option<Value>> {
+    // This method is supposed to block until there are virtual threads to unblock.
+    // Sleep to avoid busy-waiting; the daemon thread will be aborted on VM shutdown.
+    tokio::time::sleep(Duration::from_mins(1)).await;
+    Ok(Some(Value::Object(None)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_notify_jvmti_disable_suspend() -> Result<()> {
+        let (_vm, thread) = crate::test::thread().await?;
+        let result = notify_jvmti_disable_suspend(thread, Parameters::default())?;
+        assert_eq!(result, None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_notify_jvmti_end() -> Result<()> {
+        let (_vm, thread) = crate::test::thread().await?;
+        let result = notify_jvmti_end(thread, Parameters::default())?;
+        assert_eq!(result, None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_notify_jvmti_hide_frames() -> Result<()> {
+        let (_vm, thread) = crate::test::java21_thread().await?;
+        let result = notify_jvmti_hide_frames(thread, Parameters::default())?;
+        assert_eq!(result, None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_notify_jvmti_mount() -> Result<()> {
+        let (_vm, thread) = crate::test::thread().await?;
+        let result = notify_jvmti_mount(thread, Parameters::default())?;
+        assert_eq!(result, None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_notify_jvmti_start() -> Result<()> {
+        let (_vm, thread) = crate::test::thread().await?;
+        let result = notify_jvmti_start(thread, Parameters::default())?;
+        assert_eq!(result, None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_notify_jvmti_unmount() -> Result<()> {
+        let (_vm, thread) = crate::test::thread().await?;
+        let result = notify_jvmti_unmount(thread, Parameters::default())?;
+        assert_eq!(result, None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_post_pinned_event() -> Result<()> {
+        let (_vm, thread) = crate::test::thread().await?;
+        let result = post_pinned_event(thread, Parameters::default())?;
+        assert_eq!(result, None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_register_natives() -> Result<()> {
+        let (_vm, thread) = crate::test::thread().await?;
+        let result = register_natives(thread, Parameters::default())?;
+        assert_eq!(result, None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_take_virtual_thread_list_to_unblock() -> Result<()> {
+        let (_vm, thread) = crate::test::thread().await?;
+        let result = take_virtual_thread_list_to_unblock(thread, Parameters::default()).await?;
+        assert_eq!(result, Some(Value::Object(None)));
+        Ok(())
+    }
+}

@@ -1,7 +1,7 @@
 //! Touch controls for gameplay, Bedrock-style: a move stick on the left,
-//! dragging elsewhere to look, a tap to use, a still hold to destroy, and
-//! buttons for jump, inventory and pause. Outside gameplay a touch is the
-//! mouse pointer, so every screen works unchanged.
+//! dragging elsewhere to look, a tap to use, a still hold to destroy, held
+//! jump/sneak buttons, and a toggleable virtual mouse for GUI navigation.
+//! Outside gameplay a touch is the mouse pointer, so every screen works.
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -36,17 +36,28 @@ pub struct TouchLayout {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TouchButton {
     Jump,
+    Sneak,
+    Sprint,
     Chat,
     Inventory,
     Pause,
 }
 
 impl TouchButton {
-    pub const ALL: [Self; 4] = [Self::Jump, Self::Chat, Self::Inventory, Self::Pause];
+    pub const ALL: [Self; 6] = [
+        Self::Jump,
+        Self::Sneak,
+        Self::Sprint,
+        Self::Chat,
+        Self::Inventory,
+        Self::Pause,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Jump => "Jump",
+            Self::Sneak => "Sneak",
+            Self::Sprint => "Sprint",
             Self::Chat => "Chat",
             Self::Inventory => "Inv",
             Self::Pause => "| |",
@@ -57,6 +68,9 @@ impl TouchButton {
     fn tapped_action(self) -> Option<Action> {
         match self {
             Self::Jump => None,
+            // Sneak is a held control, unlike the other tap actions.
+            Self::Sneak => None,
+            Self::Sprint => Some(Action::Sprint),
             Self::Chat => Some(Action::OpenChat),
             Self::Inventory => Some(Action::ToggleInventory),
             Self::Pause => Some(Action::OpenMenu),
@@ -70,6 +84,8 @@ impl TouchLayout {
         let inset = 2.0 * BUTTON_RADIUS * self.gs;
         match button {
             TouchButton::Jump => Vec2::new(self.width - inset, self.height - 1.5 * inset),
+            TouchButton::Sneak => Vec2::new(self.width - 3.0 * inset, self.height - 1.5 * inset),
+            TouchButton::Sprint => Vec2::new(self.width - 5.0 * inset, self.height - 1.5 * inset),
             TouchButton::Chat => Vec2::new(self.width - 4.0 * inset, inset),
             TouchButton::Inventory => Vec2::new(self.width - 2.5 * inset, inset),
             TouchButton::Pause => Vec2::new(self.width - inset, inset),
@@ -109,6 +125,9 @@ pub enum TouchOutput {
     PointerMove(Vec2),
     PointerDown,
     PointerUp,
+    ActionDown(Action),
+    ActionUp(Action),
+    MenuScroll(f32),
 }
 
 enum Role {
@@ -126,7 +145,11 @@ enum Role {
         destroying: bool,
     },
     Jump,
-    Pointer,
+    Sneak,
+    Pointer {
+        last: Vec2,
+        scrolling: bool,
+    },
     /// A tap already handled on press; ignored until it lifts.
     Spent,
 }
@@ -174,13 +197,20 @@ impl TouchControls {
     ) -> Vec<TouchOutput> {
         let (role, out) = if !gameplay {
             (
-                Role::Pointer,
+                Role::Pointer {
+                    last: p,
+                    scrolling: false,
+                },
                 vec![TouchOutput::PointerMove(p), TouchOutput::PointerDown],
             )
         } else if let Some(button) = layout.button_at(p) {
-            match button.tapped_action() {
-                Some(action) => (Role::Spent, vec![TouchOutput::Tap(action)]),
-                None => (Role::Jump, Vec::new()),
+            match button {
+                TouchButton::Jump => (Role::Jump, Vec::new()),
+                TouchButton::Sneak => (Role::Sneak, vec![TouchOutput::ActionDown(Action::Sneak)]),
+                _ => match button.tapped_action() {
+                    Some(action) => (Role::Spent, vec![TouchOutput::Tap(action)]),
+                    None => (Role::Spent, Vec::new()),
+                },
             }
         } else if let Some(slot) = layout.hotbar_slot_at(p) {
             (Role::Spent, vec![TouchOutput::Hotbar(slot)])
@@ -225,7 +255,19 @@ impl TouchControls {
                 }
                 vec![TouchOutput::Look(delta)]
             }
-            Some(Role::Pointer) => vec![TouchOutput::PointerMove(p)],
+            Some(Role::Pointer { last, scrolling }) => {
+                let delta = p - *last;
+                *last = p;
+                if *scrolling || delta.length() > 8.0 * layout.gs {
+                    *scrolling = true;
+                    vec![
+                        TouchOutput::PointerUp,
+                        TouchOutput::MenuScroll(-delta.y / layout.gs),
+                    ]
+                } else {
+                    vec![TouchOutput::PointerMove(p)]
+                }
+            }
             _ => Vec::new(),
         }
     }
@@ -245,7 +287,13 @@ impl TouchControls {
             {
                 vec![TouchOutput::Use]
             }
-            Some(Role::Pointer) => vec![TouchOutput::PointerUp],
+            Some(Role::Pointer {
+                scrolling: false, ..
+            }) => vec![TouchOutput::PointerUp],
+            Some(Role::Pointer {
+                scrolling: true, ..
+            }) => Vec::new(),
+            Some(Role::Sneak) => vec![TouchOutput::ActionUp(Action::Sneak)],
             _ => Vec::new(),
         }
     }
@@ -440,6 +488,15 @@ mod tests {
             [TouchOutput::Tap(Action::OpenMenu)]
         );
         assert!(touch(&mut c, 1, TouchPhase::Ended, pause, t).is_empty());
+        let sneak = LAYOUT.button_centre(TouchButton::Sneak);
+        assert_eq!(
+            touch(&mut c, 5, TouchPhase::Started, sneak, t),
+            [TouchOutput::ActionDown(Action::Sneak)]
+        );
+        assert_eq!(
+            touch(&mut c, 5, TouchPhase::Ended, sneak, ms(t, 800)),
+            [TouchOutput::ActionUp(Action::Sneak)]
+        );
         assert_eq!(
             touch(
                 &mut c,
@@ -471,16 +528,41 @@ mod tests {
     }
 
     #[test]
+    fn gui_taps_click_and_vertical_swipes_scroll() {
+        let (mut c, t) = (TouchControls::default(), Instant::now());
+        let p = Vec2::new(300.0, 200.0);
+        assert_eq!(
+            c.on_touch(1, TouchPhase::Started, p, false, &LAYOUT, t),
+            [TouchOutput::PointerMove(p)]
+        );
+        assert_eq!(
+            c.on_touch(1, TouchPhase::Ended, p, false, &LAYOUT, ms(t, 50)),
+            [TouchOutput::PointerDown, TouchOutput::PointerUp]
+        );
+
+        c.on_touch(2, TouchPhase::Started, p, false, &LAYOUT, t);
+        let moved = p + Vec2::new(0.0, -40.0);
+        assert_eq!(
+            c.on_touch(2, TouchPhase::Moved, moved, false, &LAYOUT, ms(t, 50)),
+            [TouchOutput::MenuScroll(20.0)]
+        );
+        assert!(
+            c.on_touch(2, TouchPhase::Ended, moved, false, &LAYOUT, ms(t, 100))
+                .is_empty()
+        );
+    }
+
+    #[test]
     fn outside_gameplay_a_touch_is_the_pointer() {
         let (mut c, t) = (TouchControls::default(), Instant::now());
         let p = Vec2::new(300.0, 200.0);
         assert_eq!(
             c.on_touch(1, TouchPhase::Started, p, false, &LAYOUT, t),
-            [TouchOutput::PointerMove(p), TouchOutput::PointerDown]
+            [TouchOutput::PointerMove(p)]
         );
         assert_eq!(
             c.on_touch(1, TouchPhase::Ended, p, false, &LAYOUT, t),
-            [TouchOutput::PointerUp]
+            [TouchOutput::PointerDown, TouchOutput::PointerUp]
         );
     }
 }

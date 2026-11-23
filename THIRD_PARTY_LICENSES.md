@@ -160,3 +160,13 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## wasmi-labs/wasmi
+
+`pomme-mod` uses Wasmi as a portable WebAssembly interpreter for the
+experimental Rust-native mod runtime. Wasmi is distributed under either the
+Apache License 2.0 or the MIT License, at the user's option.
+
+Source: <https://github.com/wasmi-labs/wasmi>
+
+License: Apache-2.0 OR MIT.

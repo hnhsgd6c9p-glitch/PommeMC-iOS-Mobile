@@ -43,7 +43,7 @@ use pipelines::lightmap::{Lightmap, LightmapInfo};
 use pipelines::menu_overlay::{MenuElement, MenuOverlayPipeline, SpriteId};
 use pipelines::panorama::PanoramaPipeline;
 pub use pipelines::particle::{ParticlePipeline, ParticleQuad};
-use pipelines::post_effect::{PostEffect, PostEffects};
+use pipelines::post_effect::{BuiltinShader, PostEffect, PostEffects};
 use pipelines::skin_preview::SkinPreviewPipeline;
 pub use pipelines::sky::{SkyPipeline, SkyState};
 pub use pipelines::weather::{WeatherColumn, WeatherPipeline};
@@ -1112,6 +1112,11 @@ impl Renderer {
     /// The spectator view effect the world frame runs, if any.
     pub fn set_post_effect(&mut self, effect: Option<PostEffect>) {
         self.post_effects.set(&self.ctx.device, effect);
+    }
+
+    /// Selects Pomme's built-in mobile color-grade preset.
+    pub fn set_builtin_shader(&mut self, shader: BuiltinShader) {
+        self.post_effects.set_builtin_shader(shader);
     }
 
     pub fn set_view_bob(&mut self, walk_dist: f32, bob: f32, enabled: bool) {
@@ -2212,7 +2217,7 @@ impl Renderer {
                 }
 
                 // Vanilla `applyPostEffects`, straight after the outline.
-                if self.post_effects.effect().is_some() {
+                if self.post_effects.is_active() {
                     pass.end();
                     self.post_effects.apply(
                         &self.ctx.device,

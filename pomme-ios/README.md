@@ -68,6 +68,5 @@ There's no Back key, so the pause button is the way out of the world.
 
 - The simulator builds and starts but can't render: its GPU has no
   `drawIndirectFirstInstance`, which the chunk renderer needs. Use a device.
-- No singleplayer: the embedded server is off, as on Android.
 - The HUD ignores the safe area, so the notch and rounded corners can cover
   its edges.

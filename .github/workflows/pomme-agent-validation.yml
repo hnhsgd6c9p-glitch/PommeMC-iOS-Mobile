@@ -1,0 +1,66 @@
+name: Pomme agent integration validation
+
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - 'pomme-jvm/**'
+      - 'pomme-mod/**'
+      - 'pomme-client/**'
+      - 'pomme-ios/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/pomme-agent-validation.yml'
+  push:
+    branches: [integration/pomme-agents-ci]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pomme-agent-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust-tests:
+    name: JVM and mod-layer tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: Swatinem/rust-cache@v2
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Test JVM runtime and mod analysis
+        run: cargo test -p pomme-jvm -p pomme-mod --locked
+      - name: Check JVM and mod-layer lints
+        run: cargo clippy -p pomme-jvm -p pomme-mod --all-targets --locked -- -D warnings
+
+  ios-mod-layer:
+    name: iOS-compatible mod layer
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Add iOS target
+        run: rustup target add aarch64-apple-ios
+      - uses: Swatinem/rust-cache@v2
+      - name: Compile the iOS app with Java and native mod features
+        run: cargo check -p pomme-ios --target aarch64-apple-ios --locked
+      - name: Ensure the iOS dependency graph excludes desktop JIT
+        run: |
+          if cargo tree -p pomme-ios --target aarch64-apple-ios -e features | grep -Eiq 'cranelift|ristretto_jit'; then
+            echo "Desktop JIT dependencies leaked into the iOS graph" >&2
+            exit 1
+          fi
+      - name: Validate iOS build script syntax
+        run: bash -n pomme-ios/build-app.sh

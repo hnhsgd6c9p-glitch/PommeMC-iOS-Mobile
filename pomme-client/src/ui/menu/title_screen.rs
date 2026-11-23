@@ -9,8 +9,8 @@
 //!   theme wipe already covers the switch; this would only show on first entry.
 //! - TODO: the copyright line is clickable but not in the Tab ring, unlike
 //!   vanilla's `PlainTextButton`.
-//! - Realms notification icons, demo mode, the 1-in-10000 `minceraft.png`
-//!   easter-egg logo and the IDE-only test-world button are all omitted.
+//! - Realms notification icons, the 1-in-10000 `minceraft.png` easter-egg logo
+//!   and the IDE-only test-world button are omitted.
 
 use std::f32::consts::TAU;
 
@@ -89,7 +89,6 @@ impl MainMenu {
             sprite: SpriteId::MinecraftEdition,
             tint: WHITE,
         });
-
         self.push_splash(
             &mut elements,
             (cx + SPLASH_WIDTH_OFFSET * gs, SPLASH_HEIGHT_OFFSET * gs),

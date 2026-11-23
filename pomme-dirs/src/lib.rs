@@ -6,7 +6,7 @@
 //!   minecraft/versions/   each version's json, jar and extracted assets
 //!   pomme-assets/         Pomme's branded assets
 //!   bedrock/<tag>/        Bedrock's resource pack, for the Bedrock theme
-//!   profiles/<name>/      options, servers, saves, packs and mods
+//!   profiles/<name>/      options, servers, saves and packs; mods/<version>
 //!   cache/<version>/      rebuildable, safe to delete
 //!   launcher/             left by the old launcher
 //! ```

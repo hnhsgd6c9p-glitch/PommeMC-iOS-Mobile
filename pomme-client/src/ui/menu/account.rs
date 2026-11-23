@@ -105,7 +105,18 @@ impl MainMenu {
             return result;
         }
 
-        let (lines, code, buttons): (Vec<String>, Option<String>, Vec<&str>) =
+        let (lines, code, buttons): (Vec<String>, Option<String>, Vec<&str>) = if self.demo_account
+        {
+            (
+                vec![
+                    format!("Xbox demo identity: {}", self.username),
+                    "Offline identity. Online servers may require a licensed Microsoft account."
+                        .into(),
+                ],
+                None,
+                vec!["Sign Out", "Back"],
+            )
+        } else {
             match (&self.access_token, &*self.sign_in.read()) {
                 (Some(_), _) => (
                     vec![format!("Signed in as {}", self.username)],
@@ -114,8 +125,9 @@ impl MainMenu {
                 ),
                 (None, SignIn::Idle) if gated => (
                     vec![
-                        "Pomme needs a Minecraft account.".into(),
-                        "Sign in with the Microsoft account that owns Minecraft.".into(),
+                        "Pomme needs a Minecraft account for online play.".into(),
+                        "Sign in with Microsoft to use your Java profile or Xbox demo identity."
+                            .into(),
                     ],
                     None,
                     vec!["Sign In", leave],
@@ -148,7 +160,8 @@ impl MainMenu {
                     vec!["Try Again", leave],
                 ),
                 (None, SignIn::Done(_)) => unreachable!("handled above"),
-            };
+            }
+        };
 
         let gs = self.gui_scale(screen_w, screen_h);
         let fs = common::FONT_SIZE * gs;
@@ -303,13 +316,13 @@ mod tests {
         };
         menu.build(W, H, &escape, &mut key_bindings, text_width);
         let gate = menu.build(W, H, &MenuInput::default(), &mut key_bindings, text_width);
-        assert!(texts(&gate).contains(&"Pomme needs a Minecraft account."));
+        assert!(texts(&gate).contains(&"Pomme needs a Minecraft account for online play."));
         assert!(texts(&gate).contains(&"Quit"));
         assert!(!texts(&gate).contains(&"Back"));
 
-        menu.set_account("Tester".into(), Some("token".into()), &key_bindings);
+        menu.set_account("Tester".into(), Some("token".into()), false, &key_bindings);
         menu.set_screen(Screen::Main, &key_bindings);
-        menu.set_account("Tester".into(), None, &key_bindings);
+        menu.set_account("Tester".into(), None, false, &key_bindings);
         assert!(matches!(menu.screen, Screen::Account));
     }
 }

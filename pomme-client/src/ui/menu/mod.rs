@@ -34,6 +34,8 @@ use crate::ui::text_edit::{SystemClipboard, TextFieldState, TextInputEvent};
 struct Settings {
     #[serde(default)]
     key_bindings: KeyBindings,
+    #[serde(default = "default_pomme_version")]
+    pomme_version: String,
     gui_scale: u32,
     render_distance: u32,
     // Renamed when the default became Off, so saves holding the old default
@@ -69,6 +71,10 @@ struct Settings {
     show_autosave_indicator: bool,
     #[serde(default = "default_true")]
     vsync: bool,
+    /// Mobile performance profile: suppresses costly visual work while
+    /// preserving gameplay.
+    #[serde(default)]
+    fast_graphics: bool,
     #[serde(default = "default_max_framerate")]
     max_framerate: u32,
     #[serde(default = "default_true")]
@@ -118,6 +124,9 @@ struct Settings {
     /// The selected shader pack's file or folder name in `shaderpacks/`.
     #[serde(default)]
     shader_pack: Option<String>,
+    /// Selected native post-processing preset (0 = off).
+    #[serde(default)]
+    builtin_shader: u8,
     #[serde(default = "default_attack_indicator")]
     attack_indicator: u8,
     #[serde(default)]
@@ -206,7 +215,23 @@ fn default_japanese_glyph_variants() -> bool {
 }
 
 fn default_chunk_detail() -> u32 {
-    CHUNK_DETAIL_OFF
+    if cfg!(target_os = "ios") {
+        16
+    } else {
+        CHUNK_DETAIL_OFF
+    }
+}
+
+fn default_render_distance() -> u32 {
+    if cfg!(target_os = "ios") { 16 } else { 12 }
+}
+
+fn default_pomme_version() -> String {
+    pomme_protocol::version::VERSIONS
+        .iter()
+        .find(|version| crate::net::translate::joinable(version.protocol))
+        .map_or(pomme_protocol::version::NATIVE.name, |version| version.name)
+        .to_owned()
 }
 
 fn default_volume() -> f32 {
@@ -217,9 +242,10 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             key_bindings: KeyBindings::default(),
+            pomme_version: default_pomme_version(),
             gui_scale: 0,
-            render_distance: 12,
-            chunk_detail: CHUNK_DETAIL_OFF,
+            render_distance: default_render_distance(),
+            chunk_detail: default_chunk_detail(),
             simulation_distance: 12,
             fov: 70,
             fov_effect_scale: 1.0,
@@ -235,6 +261,7 @@ impl Default for Settings {
             vignette: true,
             entity_shadows: true,
             vsync: true,
+            fast_graphics: false,
             max_framerate: 120,
             show_online_status: true,
             show_current_server: true,
@@ -259,6 +286,7 @@ impl Default for Settings {
             ui_volume: 1.0,
             cloud_mode: 2,
             shader_pack: None,
+            builtin_shader: 0,
             attack_indicator: 1,
             display_mode: 0,
             theme: PanoramaTheme::Java.to_u8(),
@@ -273,6 +301,15 @@ impl Default for Settings {
 /// window would.
 pub(crate) fn saved_chunk_detail(game_dir: &Path) -> u32 {
     load_settings(game_dir).chunk_detail
+}
+
+/// The profile's next-launch Pomme version, if it names a translated
+/// protocol. Command-line `--version` takes precedence over this setting.
+pub(crate) fn saved_pomme_version(game_dir: &Path) -> Option<String> {
+    let version = load_settings(game_dir).pomme_version;
+    pomme_protocol::ProtocolVersion::from_name(&version)
+        .filter(|version| crate::net::translate::joinable(version.protocol))
+        .map(|version| version.name.to_owned())
 }
 
 fn load_settings(game_dir: &Path) -> Settings {
@@ -639,6 +676,7 @@ pub struct MainMenu {
     action_binding: Option<Action>,
     username: String,
     version: String,
+    pomme_version: String,
     screen: Screen,
     server_list: ServerList,
     selected_server: Option<usize>,
@@ -657,6 +695,7 @@ pub struct MainMenu {
     ping_results: PingResults,
     ping_generation: PingGeneration,
     access_token: Option<String>,
+    demo_account: bool,
     friends_data: FriendsData,
     face_cache: FaceCache,
     last_face_count: usize,
@@ -739,6 +778,7 @@ pub struct MainMenu {
     pub vignette: bool,
     pub entity_shadows: bool,
     pub vsync: bool,
+    pub fast_graphics: bool,
     pub max_framerate: u32,
     pub show_online_status: bool,
     pub show_current_server: bool,
@@ -765,6 +805,7 @@ pub struct MainMenu {
     pub cloud_mode: CloudMode,
     /// The selected shader pack, by its name in [`Self::shader_packs_dir`].
     pub shader_pack: Option<String>,
+    pub builtin_shader: u8,
     pub shader_packs_dir: PathBuf,
     pub attack_indicator: crate::ui::hud::AttackIndicatorMode,
     /// `AbstractSliderButton.canChangeValue` for the focused slider: armed
@@ -825,6 +866,7 @@ impl MainMenu {
         let mut menu = Self {
             action_binding: None,
             username,
+            pomme_version: version.clone(),
             version,
             screen: Screen::Main,
             server_list,
@@ -842,6 +884,7 @@ impl MainMenu {
             ping_results,
             ping_generation: Default::default(),
             access_token,
+            demo_account: false,
             friends_data: Default::default(),
             face_cache: Default::default(),
             last_face_count: 0,
@@ -879,7 +922,9 @@ impl MainMenu {
             credits_keys: 0,
             last_click_index: None,
             gui_scale_setting: settings.gui_scale,
-            render_distance: settings.render_distance,
+            render_distance: settings
+                .render_distance
+                .clamp(2, crate::world::chunk::MAX_CLIENT_VIEW_DISTANCE),
             chunk_detail: settings.chunk_detail,
             simulation_distance: settings.simulation_distance,
             server_render_distance: 0,
@@ -901,6 +946,7 @@ impl MainMenu {
             vignette: settings.vignette,
             entity_shadows: settings.entity_shadows,
             vsync: settings.vsync,
+            fast_graphics: settings.fast_graphics,
             max_framerate: settings.max_framerate,
             show_online_status: settings.show_online_status,
             show_current_server: settings.show_current_server,
@@ -926,6 +972,7 @@ impl MainMenu {
             display_mode: DisplayMode::from_u8(settings.display_mode),
             cloud_mode: CloudMode::from_u8(settings.cloud_mode),
             shader_pack: settings.shader_pack.clone(),
+            builtin_shader: settings.builtin_shader,
             shader_packs_dir: game_dir.join("shaderpacks"),
             attack_indicator: crate::ui::hud::AttackIndicatorMode::from_u8(
                 settings.attack_indicator,
@@ -1029,10 +1076,12 @@ impl MainMenu {
         &mut self,
         username: String,
         access_token: Option<String>,
+        is_demo: bool,
         key_bindings: &KeyBindings,
     ) {
         self.username = username;
         self.access_token = access_token;
+        self.demo_account = is_demo;
         if self.account_gated() {
             self.set_screen(Screen::Account, key_bindings);
         }
@@ -1040,7 +1089,7 @@ impl MainMenu {
 
     /// Sign-in is required and nobody is signed in yet.
     pub(crate) fn account_gated(&self) -> bool {
-        self.account_required && self.access_token.is_none()
+        self.account_required && self.access_token.is_none() && !self.demo_account
     }
 
     /// Puts the menu behind sign-in: with no account, it opens on the
@@ -1127,6 +1176,7 @@ impl MainMenu {
             &self.settings_dir,
             &Settings {
                 key_bindings: key_bindings.clone(),
+                pomme_version: self.pomme_version.clone(),
                 gui_scale: self.gui_scale_setting,
                 render_distance: self
                     .bench_render_distance
@@ -1148,6 +1198,7 @@ impl MainMenu {
                 vignette: self.vignette,
                 entity_shadows: self.entity_shadows,
                 vsync: self.vsync,
+                fast_graphics: self.fast_graphics,
                 max_framerate: self.max_framerate,
                 show_online_status: self.show_online_status,
                 show_current_server: self.show_current_server,
@@ -1172,6 +1223,7 @@ impl MainMenu {
                 skin_main_hand_right: self.skin_main_hand_right,
                 cloud_mode: self.cloud_mode.to_u8(),
                 shader_pack: self.shader_pack.clone(),
+                builtin_shader: self.builtin_shader,
                 attack_indicator: self.attack_indicator.to_u8(),
                 display_mode: self.display_mode.to_u8(),
                 theme: self.theme.to_u8(),
@@ -1786,6 +1838,22 @@ mod tests {
             };
             assert_eq!(chat.sanitized().delay_secs, secs, "delay {secs}");
         }
+    }
+
+    #[test]
+    fn fast_graphics_settings_round_trip_and_legacy_default() {
+        let mut legacy = serde_json::to_value(Settings::default()).unwrap();
+        legacy.as_object_mut().unwrap().remove("fast_graphics");
+        let legacy: Settings = serde_json::from_value(legacy).unwrap();
+        assert!(!legacy.fast_graphics);
+
+        let settings = Settings {
+            fast_graphics: true,
+            ..Settings::default()
+        };
+        let json = serde_json::to_string(&settings).unwrap();
+        let loaded: Settings = serde_json::from_str(&json).unwrap();
+        assert!(loaded.fast_graphics);
     }
 
     #[test]

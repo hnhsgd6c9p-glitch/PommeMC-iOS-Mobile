@@ -905,6 +905,11 @@ impl InputState {
             && !state.control_key()
             && !state.super_key()
         {
+            // UIKit's Return key arrives through `UIKeyInput.insertText` as
+            // a newline character, with no physical KeyCode on iOS.
+            if text.contains(['\n', '\r']) {
+                self.enter_pressed = true;
+            }
             for ch in text.chars() {
                 if !ch.is_control() {
                     self.text_events
@@ -930,6 +935,21 @@ impl InputState {
                 _ => {}
             }
         }
+    }
+
+    /// Accept committed text from the platform IME (notably the iOS software
+    /// keyboard). Mobile keyboards frequently deliver composed text through
+    /// `WindowEvent::Ime` rather than `KeyEvent::text`, so route it through
+    /// the same ordered edit stream.
+    pub fn on_ime_commit(&mut self, text: &str) {
+        if self.binding_capture || !(self.text_capture || self.menu_capture) {
+            return;
+        }
+        self.text_events.extend(
+            text.chars()
+                .filter(|ch| !ch.is_control())
+                .map(crate::ui::text_edit::TextInputEvent::Char),
+        );
     }
 
     pub fn drain_text_events(&mut self) -> Vec<crate::ui::text_edit::TextInputEvent> {
@@ -1087,6 +1107,16 @@ impl InputState {
                 }
                 TouchOutput::Hotbar(slot) => self.select_hotbar(slot),
                 TouchOutput::PointerMove(p) => self.on_cursor_moved(p.x, p.y),
+                TouchOutput::MenuScroll(delta) => self.on_menu_scroll_xy(0.0, delta),
+                TouchOutput::ActionDown(action) => {
+                    self.touch_actions_down.insert(action);
+                    self.recent_actions.insert(action, true);
+                }
+                TouchOutput::ActionUp(action) => {
+                    self.touch_actions_down.remove(&action);
+                    self.recent_actions.remove(&action);
+                    self.tap_releases.retain(|pending| *pending != action);
+                }
             }
         }
     }
@@ -1332,6 +1362,20 @@ mod key_code_tests {
     use winit::keyboard::{Key, KeyCode, NamedKey, NativeKey, NativeKeyCode, PhysicalKey};
 
     use super::key_code_of;
+
+    #[test]
+    fn text_only_mobile_keyboard_input_reaches_the_text_event_queue() {
+        let mut input = super::InputState::released();
+        input.text_capture = true;
+        input.on_menu_key_press(None, Some("hello"));
+        let events = input.drain_text_events();
+        assert_eq!(events.len(), 5);
+        assert!(events.iter().zip("hello".chars()).all(|(event, expected)| {
+            matches!(event, crate::ui::text_edit::TextInputEvent::Char(actual) if *actual == expected)
+        }));
+        input.on_menu_key_press(None, Some("\n"));
+        assert!(input.enter_pressed);
+    }
 
     #[test]
     fn android_back_is_escape() {

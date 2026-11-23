@@ -2392,6 +2392,41 @@ fn tick_tool_highlight(core: &AppCore, game: &mut GameState) {
     game.last_tool_highlight = selected;
 }
 
+#[cfg(feature = "java-mods")]
+fn publish_fabric_game_state(
+    core: &AppCore,
+    session: &pomme_jvm::ristretto_backend::FabricSession,
+    game: &GameState,
+) {
+    let state = format!(
+        "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},true",
+        game.player.position.x,
+        game.player.position.y,
+        game.player.position.z,
+        game.player.health,
+        game.player.max_health,
+        game.player.food,
+        game.player.saturation,
+        game.player.armor,
+        game.player.absorption,
+        game.player.fall_distance,
+        game.player.air_supply,
+        game.player.on_ground,
+        game.player.sprinting,
+        game.player.crouching,
+        game.player.swimming,
+        game.paused,
+        game.player.in_water,
+        game.player.experience_level,
+    );
+    if let Err(err) = core
+        .tokio_rt
+        .block_on(session.set_system_property("pomme.state", &state))
+    {
+        tracing::warn!("Fabric pomme.state update failed: {err:?}");
+    }
+}
+
 pub fn update_game(
     core: &mut AppCore,
     dt: f32,
@@ -2399,6 +2434,9 @@ pub fn update_game(
     gfx: &mut Gfx,
     connection: &ConnectionHandle,
     game: &mut GameState,
+    #[cfg(feature = "java-mods")] fabric_session: Option<
+        &pomme_jvm::ristretto_backend::FabricSession,
+    >,
 ) -> GameUpdateResult {
     // Snapshot last frame's phase timings before this frame overwrites them: they
     // align with `raw_dt`, which measures the previous frame's full duration.
@@ -2493,6 +2531,15 @@ pub fn update_game(
         }
     }
     while core.tick_accumulator >= TICK_RATE {
+        #[cfg(feature = "java-mods")]
+        if let Some(session) = fabric_session {
+            publish_fabric_game_state(core, session, game);
+            if let Err(err) = core.tokio_rt.block_on(
+                session.invoke_static_void("PommeGameProvider", "dispatchClientTickStart"),
+            ) {
+                tracing::warn!("Fabric tick start failed: {err:?}");
+            }
+        }
         game.tick_count = game.tick_count.wrapping_add(1);
         if !game.deterministic {
             game.block_light_flicker = tick_block_light_flicker(game.block_light_flicker);
@@ -2581,6 +2628,16 @@ pub fn update_game(
             game.xp_display_start_tick = game.tick_count as i64;
         }
         AppCore::send_client_tick_end(connection);
+        #[cfg(feature = "java-mods")]
+        if let Some(session) = fabric_session {
+            publish_fabric_game_state(core, session, game);
+            if let Err(err) = core
+                .tokio_rt
+                .block_on(session.invoke_static_void("PommeGameProvider", "dispatchClientTickEnd"))
+            {
+                tracing::warn!("Fabric tick end failed: {err:?}");
+            }
+        }
         core.tick_accumulator -= TICK_RATE;
     }
     if ticked {
@@ -2779,6 +2836,11 @@ pub fn update_game(
         core.menu.view_bobbing && !game.deterministic,
     );
     gfx.renderer.set_post_effect(game.drawn_spectator_effect());
+    gfx.renderer.set_builtin_shader(if core.menu.fast_graphics {
+        crate::renderer::pipelines::post_effect::BuiltinShader::Off
+    } else {
+        crate::renderer::pipelines::post_effect::BuiltinShader::from_u8(core.menu.builtin_shader)
+    });
     gfx.renderer.update_third_person_distance(
         game.block_registry.render_view(),
         camera_pivot,
@@ -4332,16 +4394,17 @@ pub fn update_game(
     let moving_block_renders =
         moving_block_renders(game, gfx.renderer.camera_render_position(), partial_tick);
 
-    let shadow_casters = if core.menu.entity_shadows && !benchmark_running {
-        shadow_casters(
-            &entity_renders,
-            &game.item_entity_store,
-            *gfx.renderer.camera_pivot_position(),
-            partial_tick,
-        )
-    } else {
-        Vec::new()
-    };
+    let shadow_casters =
+        if core.menu.entity_shadows && !core.menu.fast_graphics && !benchmark_running {
+            shadow_casters(
+                &entity_renders,
+                &game.item_entity_store,
+                *gfx.renderer.camera_pivot_position(),
+                partial_tick,
+            )
+        } else {
+            Vec::new()
+        };
 
     let block_entity_renders: Vec<crate::renderer::BlockEntityRenderInfo> = if benchmark_running {
         Vec::new()
@@ -4414,7 +4477,7 @@ pub fn update_game(
     }
     // Benchmarks and deterministic tests draw neither particles nor clouds.
     let no_ambience = benchmark_running || game.deterministic;
-    let particle_quads = if no_ambience {
+    let particle_quads = if no_ambience || core.menu.fast_graphics {
         Vec::new()
     } else {
         game.particle_store
@@ -4518,7 +4581,7 @@ pub fn update_game(
         &block_entity_renders,
         &particle_quads,
         &weather_columns,
-        if no_ambience {
+        if no_ambience || core.menu.fast_graphics {
             crate::renderer::CloudMode::Off
         } else {
             core.menu.cloud_mode

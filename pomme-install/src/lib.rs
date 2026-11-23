@@ -102,7 +102,36 @@ fn extracted_marker(versions_dir: &Path, version: &str) -> PathBuf {
 /// marker; older launchers extracted in place and wrote the marker last, so
 /// one without it may be half done.
 pub fn is_installed(assets_dir: &Path, versions_dir: &Path, version: &str) -> bool {
-    index_path(assets_dir, version).exists() && extracted_marker(versions_dir, version).exists()
+    let index = index_path(assets_dir, version);
+    let marker = extracted_marker(versions_dir, version);
+    let Ok(marker_version) = std::fs::read_to_string(marker) else {
+        return false;
+    };
+    if marker_version != version {
+        return false;
+    }
+
+    // An index and extraction marker alone are not enough: asset objects live
+    // in a shared content-addressed directory and can be missing after a
+    // partial migration, manual cleanup, or storage pressure. Treat that
+    // version as not installed so the normal verified installer repairs it.
+    let Ok(raw) = std::fs::read(index) else {
+        return false;
+    };
+    let Ok(index) = serde_json::from_slice::<AssetIndexJson>(&raw) else {
+        return false;
+    };
+    if index.objects.is_empty() {
+        return false;
+    }
+    let objects_dir = assets_dir.join("objects");
+    index.objects.values().all(|object| {
+        let hash = &object.hash;
+        hash.len() == 40
+            && hash.bytes().all(|byte| byte.is_ascii_hexdigit())
+            && std::fs::metadata(object_path(&objects_dir, hash))
+                .is_ok_and(|metadata| metadata.is_file() && metadata.len() == object.size)
+    })
 }
 
 /// Downloads whatever of `version` is missing or damaged, reporting through
@@ -447,7 +476,11 @@ mod tests {
         let dir = temp_dir("install");
         let (assets, versions) = (dir.join("assets"), dir.join("versions"));
         assert!(!is_installed(&assets, &versions, "26.2"));
-        write_atomic(&assets.join("indexes/26.2.json"), b"{}")
+        let hash = "0123456789012345678901234567890123456789";
+        let index = format!(
+            r#"{{"objects":{{"minecraft/textures/block/stone.png":{{"hash":"{hash}","size":4}}}}}}"#
+        );
+        write_atomic(&assets.join("indexes/26.2.json"), index.as_bytes())
             .await
             .unwrap();
         assert!(!is_installed(&assets, &versions, "26.2"));
@@ -455,7 +488,13 @@ mod tests {
         std::fs::create_dir_all(versions.join("26.2/extracted/assets")).unwrap();
         assert!(!is_installed(&assets, &versions, "26.2"));
         std::fs::write(versions.join("26.2/extracted/.extracted"), "26.2").unwrap();
+        assert!(!is_installed(&assets, &versions, "26.2"));
+        let object = assets.join("objects").join("01").join(hash);
+        std::fs::create_dir_all(object.parent().unwrap()).unwrap();
+        std::fs::write(&object, b"data").unwrap();
         assert!(is_installed(&assets, &versions, "26.2"));
+        std::fs::remove_file(object).unwrap();
+        assert!(!is_installed(&assets, &versions, "26.2"));
         assert!(!assets.join("indexes/26.2.json.part").exists());
         std::fs::remove_dir_all(dir).unwrap();
     }

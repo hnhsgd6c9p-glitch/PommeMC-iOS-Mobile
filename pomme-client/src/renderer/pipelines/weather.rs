@@ -85,6 +85,9 @@ pub struct WeatherPipeline {
     /// The shared [`Lightmap`]'s group, set 2.
     lightmap_set: rhi::backend::BindGroup,
     vertex_buffers: Vec<rhi::backend::Buffer>,
+    /// Reused CPU-side precipitation geometry, avoiding per-frame Vec churn.
+    rain_vertices: Vec<WeatherVertex>,
+    snow_vertices: Vec<WeatherVertex>,
     sampler: rhi::backend::Sampler,
     rain: rhi::backend::Texture,
     snow: rhi::backend::Texture,
@@ -153,6 +156,8 @@ impl WeatherPipeline {
             camera_buffers,
             lightmap_set: lightmap.group,
             vertex_buffers,
+            rain_vertices: Vec::with_capacity(MAX_WEATHER_VERTS),
+            snow_vertices: Vec::with_capacity(MAX_WEATHER_VERTS),
             sampler,
             rain,
             snow,
@@ -182,8 +187,8 @@ impl WeatherPipeline {
         let cam = (*camera.position - anchor).as_vec3() + camera.third_person_offset();
         let radius_sq = (WEATHER_RADIUS as f32) * (WEATHER_RADIUS as f32);
 
-        let mut rain_verts: Vec<WeatherVertex> = Vec::new();
-        let mut snow_verts: Vec<WeatherVertex> = Vec::new();
+        self.rain_vertices.clear();
+        self.snow_vertices.clear();
 
         for col in columns {
             let (max_alpha, u_off, v_off, is_snow) = match col.precip {
@@ -242,9 +247,9 @@ impl WeatherPipeline {
             ];
 
             let target = if is_snow {
-                &mut snow_verts
+                &mut self.snow_vertices
             } else {
-                &mut rain_verts
+                &mut self.rain_vertices
             };
             for &i in &[0usize, 1, 2, 0, 2, 3] {
                 target.push(WeatherVertex {
@@ -256,17 +261,17 @@ impl WeatherPipeline {
             }
         }
 
-        let rain_count = rain_verts.len() as u32;
-        let snow_count = snow_verts.len() as u32;
+        let rain_count = self.rain_vertices.len() as u32;
+        let snow_count = self.snow_vertices.len() as u32;
         if rain_count == 0 && snow_count == 0 {
             return;
         }
 
-        rain_verts.append(&mut snow_verts);
-        if rain_verts.len() > MAX_WEATHER_VERTS {
-            rain_verts.truncate(MAX_WEATHER_VERTS);
+        self.rain_vertices.append(&mut self.snow_vertices);
+        if self.rain_vertices.len() > MAX_WEATHER_VERTS {
+            self.rain_vertices.truncate(MAX_WEATHER_VERTS);
         }
-        let bytes = bytemuck::cast_slice::<WeatherVertex, u8>(&rain_verts);
+        let bytes = bytemuck::cast_slice::<WeatherVertex, u8>(&self.rain_vertices);
         self.vertex_buffers[frame].write(bytes);
 
         pass.set_pipeline(&self.pipeline);

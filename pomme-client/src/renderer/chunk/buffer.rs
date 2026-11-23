@@ -1311,9 +1311,8 @@ impl ChunkBufferStore {
     /// against it and the shader adds back `camera_pos` (the eye's offset
     /// from that anchor).
     ///
-    /// TODO: water isn't depth-sorted, so overlapping translucent surfaces
-    /// (oceans at grazing angles, water seen through water) can blend out of
-    /// order.
+    /// Water sections are drawn back-to-front by section-center distance so
+    /// overlapping translucent surfaces blend in a stable order.
     pub fn draw_water(
         &self,
         pass: &rhi::backend::RenderPassEncoder,
@@ -1328,10 +1327,9 @@ impl ChunkBufferStore {
         pass.set_vertex_buffer(0, self.vertex_buffer.handle());
         pass.set_index_buffer(self.index_buffer.handle());
 
-        let now = std::time::Instant::now();
+        let mut water_sections = Vec::new();
         for (pos, alloc) in self.chunks.iter() {
             let col_vis = self.chunk_visibility.get(pos).copied().unwrap_or(u32::MAX);
-            let nearby = column_nearby(self.fade_enabled, *pos, eye);
             for sec in &alloc.sections {
                 if sec.water_index_count == 0
                     || col_vis & (1u32 << sec.section_index) == 0
@@ -1339,22 +1337,30 @@ impl ChunkBufferStore {
                 {
                     continue;
                 }
-                let vis = Self::section_visibility(nearby, sec, now);
-                let rel = (origin_dvec(sec.origin) - anchor).as_vec3();
-                let origin_fade = [rel.x, rel.y, rel.z, vis];
-                pass.set_push_constants(
-                    rhi::ShaderStages::VERTEX,
-                    0,
-                    bytemuck::bytes_of(&origin_fade),
-                );
-                pass.draw_indexed(
-                    sec.water_index_count,
-                    1,
-                    sec.water_first_index,
-                    sec.vertex_offset,
-                    0,
-                );
+                let center = origin_dvec(sec.origin) + DVec3::splat(8.0);
+                water_sections.push(((center - eye).length_squared(), *pos, sec));
             }
+        }
+        water_sections.sort_unstable_by(|a, b| b.0.total_cmp(&a.0));
+
+        let now = std::time::Instant::now();
+        for (_, pos, sec) in water_sections {
+            let nearby = column_nearby(self.fade_enabled, pos, eye);
+            let vis = Self::section_visibility(nearby, sec, now);
+            let rel = (origin_dvec(sec.origin) - anchor).as_vec3();
+            let origin_fade = [rel.x, rel.y, rel.z, vis];
+            pass.set_push_constants(
+                rhi::ShaderStages::VERTEX,
+                0,
+                bytemuck::bytes_of(&origin_fade),
+            );
+            pass.draw_indexed(
+                sec.water_index_count,
+                1,
+                sec.water_first_index,
+                sec.vertex_offset,
+                0,
+            );
         }
     }
 

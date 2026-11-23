@@ -39,6 +39,18 @@ fn compat_label(compat: PackCompat) -> (&'static str, [f32; 4]) {
     }
 }
 
+fn next_pomme_version(current: &str) -> String {
+    let versions: Vec<_> = pomme_protocol::version::VERSIONS
+        .iter()
+        .filter(|version| crate::net::translate::joinable(version.protocol))
+        .collect();
+    let next = versions
+        .iter()
+        .position(|version| version.name == current)
+        .map_or(0, |index| (index + 1) % versions.len());
+    versions[next].name.to_owned()
+}
+
 // Chat option label prefixes, shared by the labels and their handlers.
 const CHAT_VISIBILITY: &str = "Chat:";
 const CHAT_COLORS: &str = "Colors:";
@@ -149,6 +161,11 @@ impl MainMenu {
         } else {
             format!("FOV: {}", self.fov)
         };
+        let pomme_version_label = if self.pomme_version == self.version {
+            format!("Pomme Version: {} (applied)", self.pomme_version)
+        } else {
+            format!("Pomme Version: {} (restart to apply)", self.pomme_version)
+        };
         // FOV slider + Online lead the grid, above the categories (vanilla header
         // sub-row).
         let rows: Vec<OptRow> = vec![
@@ -158,6 +175,7 @@ impl MainMenu {
             OptRow::Pair("Language...", "Chat Settings..."),
             OptRow::Pair("Resource Packs...", "Accessibility Settings..."),
             OptRow::Pair("Telemetry Data...", "Credits & Attribution..."),
+            OptRow::Big(&pomme_version_label),
         ];
 
         let nav: &[(&str, Screen)] = &[
@@ -242,13 +260,14 @@ impl MainMenu {
             .map_or(gs / (w - 8.0 * gs), |span| 1.0 / span)
     }
 
-    /// Upper bound of the render distance slider: the server-announced view
-    /// distance while connected (can exceed 32), 32 otherwise.
+    /// Upper bound of the render-distance slider, further limited by the
+    /// server's announced view distance.
     fn render_distance_max(&self) -> u32 {
+        let client_max = crate::world::chunk::MAX_CLIENT_VIEW_DISTANCE;
         if self.server_render_distance > 0 {
-            self.server_render_distance.max(3)
+            self.server_render_distance.clamp(3, client_max)
         } else {
-            32
+            client_max
         }
     }
 
@@ -296,6 +315,11 @@ impl MainMenu {
             "Shader Pack: {}",
             self.shader_pack.as_deref().unwrap_or("OFF")
         );
+        let builtin_shader_label = format!(
+            "Built-in Shader: {}",
+            crate::renderer::pipelines::post_effect::BuiltinShader::from_u8(self.builtin_shader)
+                .label()
+        );
         let attack_label = format!("Attack Indicator: {}", self.attack_indicator.label());
         let vignette_label = if self.vignette {
             "Vignette: ON"
@@ -307,10 +331,15 @@ impl MainMenu {
         } else {
             "Show Autosave Indicator: OFF"
         };
-        let entity_shadows_label = if self.entity_shadows {
+        let entity_shadows_label = if self.entity_shadows && !self.fast_graphics {
             "Entity Shadows: ON"
         } else {
             "Entity Shadows: OFF"
+        };
+        let graphics_label = if self.fast_graphics {
+            "Graphics: Fast"
+        } else {
+            "Graphics: Fancy"
         };
         let (blur_label, blur_frac) = self.menu_background_blur_slider();
         let brightness = brightness_label(self.brightness);
@@ -322,7 +351,7 @@ impl MainMenu {
             OptRow::Pair(fullscreen_label, "Exclusive Fullscreen: OFF"),
             OptRow::Pair(&brightness, "Graphics Backend: Default"),
             OptRow::Header("Quality"),
-            OptRow::Big("Graphics: Fancy"),
+            OptRow::Big(&graphics_label),
             OptRow::Pair("Biome Blend: 5x5", &rd),
             // TODO: static stub, not wired (see mesher::enqueue).
             OptRow::Pair("Prioritize Chunk Updates: None", &sd),
@@ -334,6 +363,7 @@ impl MainMenu {
             OptRow::Pair("Cutout Leaves: Fancy", "Improved Transparency: OFF"),
             OptRow::Pair("Texture Filtering: None", "Max Anisotropy: 1"),
             OptRow::Pair("Weather Radius: 10", &shader_label),
+            OptRow::PairLeft(&builtin_shader_label),
             OptRow::Header("Preferences"),
             OptRow::Pair(autosave_label, vignette_label),
             OptRow::Pair(&attack_label, "Chunk Fade-in: 1.0s"),
@@ -357,7 +387,6 @@ impl MainMenu {
             "Inactivity FPS Limit:",
             "Exclusive Fullscreen:",
             "Graphics Backend:",
-            "Graphics:",
             "Biome Blend:",
             "Prioritize Chunk Updates:",
             "Simulation Distance:",
@@ -1426,6 +1455,10 @@ impl MainMenu {
                             self.pack_search.set_focused(true);
                         }
                     }
+                    if label.starts_with("Pomme Version:") {
+                        self.pomme_version = next_pomme_version(&self.pomme_version);
+                        self.save_settings(key_bindings);
+                    }
                     if label.starts_with("GUI Scale:") {
                         // Capped at what Auto resolves to, as vanilla's range is.
                         let max =
@@ -1436,6 +1469,10 @@ impl MainMenu {
                     if label.starts_with("Fullscreen:") {
                         self.set_display_mode(self.display_mode.cycle(), key_bindings);
                     }
+                    if label.starts_with("Graphics:") {
+                        self.fast_graphics = !self.fast_graphics;
+                        self.save_settings(key_bindings);
+                    }
                     if label.starts_with("Clouds:") {
                         self.cloud_mode = self.cloud_mode.cycle();
                         self.save_settings(key_bindings);
@@ -1443,6 +1480,14 @@ impl MainMenu {
                     if label.starts_with("Shader Pack:") {
                         self.shader_pack =
                             next_shader_pack(&self.shader_packs_dir, self.shader_pack.as_deref());
+                        self.save_settings(key_bindings);
+                    }
+                    if label.starts_with("Built-in Shader:") {
+                        self.builtin_shader =
+                            crate::renderer::pipelines::post_effect::BuiltinShader::from_u8(
+                                self.builtin_shader,
+                            )
+                            .cycle() as u8;
                         self.save_settings(key_bindings);
                     }
                     if label.starts_with("Attack Indicator:") {
@@ -2090,10 +2135,11 @@ mod tests {
 
     #[test]
     fn disabled_prefixes_match_dynamic_option_labels() {
-        let disabled = &["Simulation Distance:", "Graphics:"];
+        let disabled = &["Simulation Distance:"];
 
         assert!(!option_enabled("Simulation Distance: 12 chunks", disabled));
-        assert!(!option_enabled("Graphics: Fancy", disabled));
+        assert!(option_enabled("Graphics: Fancy", disabled));
+        assert!(option_enabled("Graphics: Fast", disabled));
         assert!(option_enabled("Render Distance: 12 chunks", disabled));
         assert!(option_enabled("Graphics Backend: Default", disabled));
     }

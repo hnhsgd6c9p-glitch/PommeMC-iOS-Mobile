@@ -1,0 +1,32 @@
+use crate::jdk;
+use ristretto_classfile::JAVA_8;
+use ristretto_classfile::VersionSpecification::LessThanOrEqual;
+use ristretto_classloader::Value;
+use ristretto_macros::intrinsic_method;
+use ristretto_types::Thread;
+use ristretto_types::{Parameters, Result};
+use std::sync::Arc;
+
+#[intrinsic_method(
+    "sun/reflect/NativeConstructorAccessorImpl.newInstance0(Ljava/lang/reflect/Constructor;[Ljava/lang/Object;)Ljava/lang/Object;",
+    LessThanOrEqual(JAVA_8)
+)]
+pub async fn new_instance_0<T: Thread + 'static>(
+    thread: Arc<T>,
+    parameters: Parameters,
+) -> Result<Option<Value>> {
+    jdk::internal::reflect::nativeconstructoraccessorimpl::new_instance_0(thread, parameters).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_new_instance_0() -> Result<()> {
+        jdk::internal::reflect::nativeconstructoraccessorimpl::tests::new_instance_test(
+            new_instance_0,
+        )
+        .await
+    }
+}

@@ -214,6 +214,7 @@ pub fn update_menu(
             core.menu.set_account(
                 core.user.username.clone(),
                 core.user.access_token.clone(),
+                account.as_ref().is_some_and(|a| a.is_demo),
                 &core.input.key_bindings,
             );
             if core.user.has_profile {

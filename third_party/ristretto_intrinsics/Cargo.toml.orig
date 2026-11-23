@@ -1,0 +1,146 @@
+[package]
+authors.workspace = true
+categories.workspace = true
+description = "Intrinsic methods for the Ristretto JVM"
+edition.workspace = true
+keywords = ["java", "jvm"]
+license.workspace = true
+name = "ristretto_intrinsics"
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[lib]
+name = "ristretto_intrinsics"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+ahash = { workspace = true }
+async-recursion = { workspace = true }
+bitflags = { workspace = true }
+byteorder = { workspace = true }
+flate2 = { workspace = true }
+getrandom = { workspace = true }
+jiff = { workspace = true }
+libjpeg-turbo-rs = { workspace = true }
+parking_lot = { workspace = true }
+portable-atomic = { workspace = true }
+ristretto_classfile = { path = "../ristretto_classfile", version = "0.35.0" }
+ristretto_classloader = { path = "../ristretto_classloader", version = "0.35.0", default-features = false }
+ristretto_gc = { path = "../ristretto_gc", version = "0.35.0" }
+ristretto_macros = { path = "../ristretto_macros", version = "0.35.0" }
+ristretto_types = { path = "../ristretto_types", version = "0.35.0" }
+sys-locale = { workspace = true }
+tracing = { workspace = true }
+zerocopy = { workspace = true }
+zip = { workspace = true, features = ["deflate"] }
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+console = { workspace = true }
+cpal = { workspace = true, optional = true }
+dirs = { workspace = true }
+filetime = { workspace = true }
+libc = { workspace = true }
+midir = { workspace = true, optional = true }
+libloading = { workspace = true }
+os_info = { workspace = true }
+socket2 = { workspace = true }
+sysinfo = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["fs", "io-util", "net", "process", "time"] }
+whoami = { workspace = true }
+
+[target.'cfg(any(target_family = "windows", target_os = "android", target_os = "freebsd", target_os = "ios", target_os = "linux", target_os = "macos", target_os = "netbsd", target_os = "openbsd", target_os = "vxworks"))'.dependencies]
+thread-priority = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation-sys = { workspace = true }
+coreaudio-sys = { workspace = true, optional = true }
+
+[target.'cfg(target_family = "windows")'.dependencies]
+os_pipe = { workspace = true }
+windows-sys = { workspace = true, features = [
+    "Win32_Globalization",
+    "Win32_Foundation",
+    "Win32_NetworkManagement_IpHelper",
+    "Win32_NetworkManagement_Ndis",
+    "Win32_Networking_WinSock",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_IO",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+    "Win32_System_WindowsProgramming",
+] }
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+tokio = { workspace = true }
+
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
+js-sys = { version = "0.3", optional = true }
+wasm-bindgen = { version = "0.2", optional = true }
+wasm-bindgen-futures = { workspace = true }
+web-sys = { version = "0.3", optional = true, features = [
+    "AudioBuffer",
+    "AudioBufferSourceNode",
+    "AudioContext",
+    "AudioContextOptions",
+    "AudioContextState",
+    "AudioDestinationNode",
+    "BaseAudioContext",
+    "GainNode",
+    "GainOptions",
+    "MidiAccess",
+    "MidiInput",
+    "MidiInputMap",
+    "MidiMessageEvent",
+    "MidiOptions",
+    "MidiOutput",
+    "MidiOutputMap",
+    "MidiPort",
+    "Navigator",
+    "Performance",
+    "Window",
+] }
+
+[features]
+default = ["audio"]
+audio = [
+    "dep:coreaudio-sys",
+    "dep:cpal",
+    "dep:js-sys",
+    "dep:midir",
+    "dep:wasm-bindgen",
+    "dep:web-sys",
+]
+
+[dev-dependencies]
+proc-macro2 = { workspace = true }
+quote = { workspace = true }
+syn = { workspace = true, features = ["full", "extra-traits"] }
+ristretto_test_util = { path = "../ristretto_test_util" }
+# Keep this test-only dependency out of published manifests: the VM depends on this crate.
+ristretto_vm = { path = "../ristretto_vm", default-features = false }
+tempfile = { workspace = true }
+
+[target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread"] }
+
+[package.metadata.cargo-machete]
+ignored = [
+    # used by async functions in proc macros
+    "async-recursion",
+    # used by build/registry.rs in the build script and registry generator tests
+    "proc-macro2",
+]
+
+[build-dependencies]
+proc-macro2 = { workspace = true }
+quote = { workspace = true }
+syn = { workspace = true, features = ["full", "extra-traits"] }
+ristretto_classfile = { path = "../ristretto_classfile", version = "0.35.0" }
